@@ -122,7 +122,7 @@ class SensorGroup:
                 status = f"error: {e}"
             target_statuses.append(f"{getattr(t, 'entity_id', str(t))}: {status}")
 
-        # Startup case: if target is on, all sensors are off, and no deadline is set
+        # Startup case: if the target is on, all sensors are off, and no deadline is set
         if target_on and all_sensors_off and self._last_all_sensors_off and self._timer_deadline is None:
             delay = await self.get_delay()
             now = self.hass.loop.time()
@@ -146,10 +146,10 @@ class SensorGroup:
                 _LOGGER.info(
                     f"[Group {self.group_id}] Deadline cancelled by sensor ON | Sensors: {sensor_statuses} | Targets: {target_statuses}")
         else:
-            # If target is off — always cancel deadline
+            # If the target is off — always cancel the deadline
             self._cancel_deadline()
             _LOGGER.info(
-                f"[Group {self.group_id}] Deadline cancelled because target is OFF | Sensors: {sensor_statuses} | Targets: {target_statuses}")
+                f"[Group {self.group_id}] Deadline cancelled because no targets is ON | Sensors: {sensor_statuses} | Targets: {target_statuses}")
 
         self._last_all_sensors_off = all_sensors_off
 
@@ -174,7 +174,6 @@ class SensorGroup:
             self._timer.cancel()
             self._timer = None
         self._timer_deadline = None
-        _LOGGER.info("Timer cancelled (at least one sensor is on/true)")
 
     async def _turn_off_targets(self):
         tasks = []
