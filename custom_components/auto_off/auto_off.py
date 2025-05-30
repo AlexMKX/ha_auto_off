@@ -98,14 +98,14 @@ class SensorGroup:
         tpl = Template(str(self._config.delay), self.hass)
         rendered = tpl.async_render()
         try:
-            return int(rendered)
+            return int(rendered)*60
         except Exception:
             raise ValueError(f"Failed to render delay template: {self._config.delay}, result: {rendered}")
 
     async def check_and_set_deadline(self):
         target_on = await self.any_target_on()
         all_sensors_off = await self.all_sensors_off()
-
+        _LOGGER.info(f"[Checking Group {self.group_id}]")
         # For logging: collect sensor and target statuses
         sensor_statuses = []
         for s in self._sensors:
@@ -237,7 +237,6 @@ class AutoOffManager:
                 # Check deadlines for all groups
                 for group in self._groups.values():
                     await group.check_and_set_deadline()
-                _LOGGER.debug("Config reloaded by schedule")
             except Exception as e:
                 _LOGGER.error(f"Scheduled config reload failed: {e}")
             await asyncio.sleep(60)
