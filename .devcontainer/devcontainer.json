@@ -1,0 +1,22 @@
+{
+  "name": "HA Switch Auto Off Dev",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python3"
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-azuretools.vscode-docker"
+      ]
+    }
+  },
+  "postCreateCommand": "pip install --upgrade pip && pip install homeassistant jinja2 pyyaml pytest",
+  "forwardPorts": [8123],
+  "remoteUser": "vscode"
+} 

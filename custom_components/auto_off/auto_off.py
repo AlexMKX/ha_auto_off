@@ -31,7 +31,7 @@ class Sensor:
         self.raw = sensor_def
 
     async def is_on(self):
-        # 1. Пробуем рендерить как шаблон
+        # 1. Try rendering as a template
         try:
             tpl = Template(str(self.raw), self.hass)
             rendered = tpl.async_render()
@@ -39,11 +39,11 @@ class Sensor:
                 return rendered
         except Exception:
             pass
-        # 2. Пробуем как entity
+        # 2. Try as entity
         state = self.hass.states.get(self.raw)
         if isinstance(state, State):
             return state.state in ("on", "true", "1")
-        # 3. Если ни то, ни другое — ошибка
+        # 3. If neither — log error
         _LOGGER.info(f"Sensor '{self.raw}' is not a valid template or entity")
         return False
 
@@ -82,34 +82,6 @@ class SensorGroup:
         for t in self._config.targets:
             self._targets.append(Target(self.hass, t))
 
-    async def refresh(self):
-        for unsub in self._unsubs:
-            try:
-                unsub()
-            except Exception:
-                pass
-        self._unsubs = []
-        self._sensors = []
-        self._targets = []
-        for sensor in self._config.sensors:
-            try:
-                self._sensors.append(Sensor(self.hass, sensor))
-            except Exception as e:
-                _LOGGER.error(f"Sensor '{sensor}' is invalid and will be ignored: {e}")
-        for t in self._config.targets:
-            self._targets.append(Target(self.hass, t))
-        _LOGGER.info(f"Refreshed sensors: {self._sensors}")
-        # Логируем дедлайн и статусы
-        deadline = None
-        if self._timer_deadline is not None:
-            now = self.hass.loop.time()
-            deadline = max(0, self._timer_deadline - now)
-        statuses = []
-        for s in self._sensors:
-            statuses.append(str(s))
-        _LOGGER.info(
-            f"[Group {self.group_id}] Deadline: {deadline}, Sensors: {statuses}, Targets: {[str(t) for t in self._targets]}")
-
     async def all_sensors_off(self):
         for s in self._sensors:
             if await s.is_on():
@@ -134,29 +106,50 @@ class SensorGroup:
         target_on = await self.any_target_on()
         all_sensors_off = await self.all_sensors_off()
 
-        # Случай старта: если таргет включен, все сенсоры выключены, дедлайн не установлен
+        # For logging: collect sensor and target statuses
+        sensor_statuses = []
+        for s in self._sensors:
+            try:
+                status = await s.is_on()
+            except Exception as e:
+                status = f"error: {e}"
+            sensor_statuses.append(f"{getattr(s, 'raw', str(s))}: {status}")
+        target_statuses = []
+        for t in self._targets:
+            try:
+                status = await t.is_on()
+            except Exception as e:
+                status = f"error: {e}"
+            target_statuses.append(f"{getattr(t, 'entity_id', str(t))}: {status}")
+
+        # Startup case: if target is on, all sensors are off, and no deadline is set
         if target_on and all_sensors_off and self._last_all_sensors_off and self._timer_deadline is None:
             delay = await self.get_delay()
             now = self.hass.loop.time()
             new_deadline = now + delay
             self._start_deadline(force_deadline=new_deadline)
-            _LOGGER.info(f"[Group {self.group_id}] Deadline set at startup: {delay}s")
+            _LOGGER.info(
+                f"[Group {self.group_id}] Deadline set at startup: {delay}s | Sensors: {sensor_statuses} | Targets: {target_statuses} | New deadline: {new_deadline}")
 
         if target_on:
             if self._last_all_sensors_off is False and all_sensors_off:
-                # Переход any_sensor_on -> all_sensors_off: ставим дедлайн
+                # Transition any_sensor_on -> all_sensors_off: set deadline
                 delay = await self.get_delay()
                 now = self.hass.loop.time()
                 new_deadline = now + delay
                 self._start_deadline(force_deadline=new_deadline)
-                _LOGGER.info(f"[Group {self.group_id}] Deadline set by transition to all_sensors_off: {delay}s")
+                _LOGGER.info(
+                    f"[Group {self.group_id}] Deadline set by transition to all_sensors_off: {delay}s | Sensors: {sensor_statuses} | Targets: {target_statuses} | New deadline: {new_deadline}")
             elif self._last_all_sensors_off is True and not all_sensors_off:
-                # Переход all_sensors_off -> any_sensor_on: отменяем дедлайн
+                # Transition all_sensors_off -> any_sensor_on: cancel deadline
                 self._cancel_deadline()
-                _LOGGER.info(f"[Group {self.group_id}] Deadline cancelled by sensor ON")
+                _LOGGER.info(
+                    f"[Group {self.group_id}] Deadline cancelled by sensor ON | Sensors: {sensor_statuses} | Targets: {target_statuses}")
         else:
-            # Если таргет выключен — всегда отменяем дедлайн
+            # If target is off — always cancel deadline
             self._cancel_deadline()
+            _LOGGER.info(
+                f"[Group {self.group_id}] Deadline cancelled because target is OFF | Sensors: {sensor_statuses} | Targets: {target_statuses}")
 
         self._last_all_sensors_off = all_sensors_off
 
@@ -203,7 +196,7 @@ class SensorGroup:
 
 class AutoOffManager:
     """
-    Менеджер автоматического выключения устройств по событиям и тайм-ауту.
+    Manager for automatic device turn-off by events and timeout.
     """
     hass: HomeAssistant
     config: Dict[str, Any]
@@ -220,7 +213,7 @@ class AutoOffManager:
 
     async def async_initialize(self) -> None:
         await self._parse_config()
-        asyncio.create_task(self.async_schedule_config_reload())
+        asyncio.create_task(self.worker())
         _LOGGER.info("AutoOffManager initialized")
 
     async def _parse_config(self) -> None:
@@ -237,13 +230,12 @@ class AutoOffManager:
                 new_groups[group_id] = SensorGroup(self.hass, group_id, group)
             else:
                 new_groups[group_id] = self._groups[group_id]
-            await new_groups[group_id].refresh()
         self._groups = new_groups
 
-    async def async_schedule_config_reload(self) -> None:
+    async def worker(self) -> None:
         while True:
             try:
-                # Проверяем дедлайны для всех групп
+                # Check deadlines for all groups
                 for group in self._groups.values():
                     await group.check_and_set_deadline()
                 _LOGGER.debug("Config reloaded by schedule")

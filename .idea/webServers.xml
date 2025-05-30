@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="d85d7152-e080-4690-b05a-b3feec239fcb" name="hassio">
+        <fileTransfer rootFolder="/config/appdaemon/apps" accessType="SFTP" host="hassio.h.xxl.cx" port="22" sshConfigId="edbefcb0-2f31-4fee-811c-2c7315483a7b" sshConfig="root@hassio.h.xxl.cx:22 agent" authAgent="true">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>

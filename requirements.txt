@@ -1,0 +1,4 @@
+homeassistant>=2024.0.0
+jinja2
+pyyaml
+pytest

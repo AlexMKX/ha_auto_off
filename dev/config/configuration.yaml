@@ -1,0 +1,97 @@
+homeassistant:
+  name: Test Home
+  latitude: 0
+  longitude: 0
+  elevation: 0
+  unit_system: metric
+  time_zone: UTC
+
+logger:
+  default: info
+  logs:
+    custom_components.auto_off: debug
+
+# Пример интеграции
+auto_off:
+  sensors:
+    - sensors:
+        - binary_sensor.example1
+        - "{{ is_state('input_boolean.example2', 'on') and is_state('switch.example_switch', 'on') }}"
+      targets:
+        - light.example_light
+      delay: "10"
+
+# Пример тестовых сущностей
+input_boolean:
+  test_motion:
+    name: Test Motion
+    initial: off
+  example1:
+    name: "Example Binary Sensor 1 Helper"
+  example2:
+    name: "Example Binary Sensor 2 Helper"
+  example_switch:
+    name: "Example Switch Helper"
+  example_light:
+    name: "Example Light Helper"
+
+light:
+  - platform: demo
+    name: Test Light
+    unique_id: test_light
+  - platform: template
+    lights:
+      example_light:
+        friendly_name: "Example Light"
+        value_template: "{{ is_state('input_boolean.example_light', 'on') }}"
+        turn_on:
+          service: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.example_light
+        turn_off:
+          service: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.example_light
+
+# --- Binary sensors (template) ---
+binary_sensor:
+  - platform: template
+    sensors:
+      example1:
+        friendly_name: "Example Binary Sensor 1"
+        value_template: "{{ is_state('input_boolean.example1', 'on') }}"
+      example2:
+        friendly_name: "Example Binary Sensor 2"
+        value_template: "{{ is_state('input_boolean.example2', 'on') }}"
+
+# --- Binary sensor group и остальные группы ---
+group:
+  example_binary_group:
+    name: "Example Binary Sensor Group"
+    entities:
+      - binary_sensor.example1
+      - binary_sensor.example2
+  example_switch_group:
+    name: "Example Switch Group"
+    entities:
+      - switch.example_switch
+  example_light_group:
+    name: "Example Light Group"
+    entities:
+      - light.example_light
+
+# --- Switch (template) ---
+switch:
+  - platform: template
+    switches:
+      example_switch:
+        friendly_name: "Example Switch"
+        value_template: "{{ is_state('input_boolean.example_switch', 'on') }}"
+        turn_on:
+          service: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.example_switch
+        turn_off:
+          service: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.example_switch 
