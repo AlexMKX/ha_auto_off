@@ -1,0 +1,134 @@
+name: Create Release
+
+on:
+  push:
+    branches: [ master ]
+    paths-ignore:
+      - '.github/**'
+      - 'README.md'
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    # Предотвращаем цикл - пропускаем если коммит от GitHub Action
+    if: "!contains(github.event.head_commit.message, '[skip-release]')"
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Generate version
+      id: version
+      run: |
+        # Генерируем версию в формате YYMMDDHH
+        VERSION=$(date '+%y%m%d%H')
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        echo "Generated version: $VERSION"
+
+    - name: Check if version already exists or if this is a version bump commit
+      id: check_version
+      run: |
+        # Проверяем есть ли уже такой тег
+        if git tag -l "${{ steps.version.outputs.VERSION }}" | grep -q "^${{ steps.version.outputs.VERSION }}$"; then
+          echo "EXISTS=true" >> $GITHUB_OUTPUT
+          echo "Version ${{ steps.version.outputs.VERSION }} already exists"
+        elif [[ "${{ github.event.head_commit.message }}" == *"chore: bump version"* ]]; then
+          echo "EXISTS=true" >> $GITHUB_OUTPUT
+          echo "Skipping - this is a version bump commit"
+        else
+          echo "EXISTS=false" >> $GITHUB_OUTPUT
+          echo "Version ${{ steps.version.outputs.VERSION }} is new"
+        fi
+
+    - name: Update manifest.json
+      if: steps.check_version.outputs.EXISTS == 'false'
+      run: |
+        # Обновляем версию в manifest.json
+        python -c "
+        import json
+        with open('custom_components/auto_off/manifest.json', 'r') as f:
+            manifest = json.load(f)
+        manifest['version'] = '${{ steps.version.outputs.VERSION }}'
+        with open('custom_components/auto_off/manifest.json', 'w') as f:
+            json.dump(manifest, f, indent=2)
+        print(f'Updated manifest.json version to ${{ steps.version.outputs.VERSION }}')
+        "
+
+    - name: Commit and push version update
+      if: steps.check_version.outputs.EXISTS == 'false'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add custom_components/auto_off/manifest.json
+        git commit -m "chore: bump version to ${{ steps.version.outputs.VERSION }} [skip-release]" || exit 0
+        git push
+
+    - name: Create tag
+      if: steps.check_version.outputs.EXISTS == 'false'
+      run: |
+        git tag ${{ steps.version.outputs.VERSION }}
+        git push origin ${{ steps.version.outputs.VERSION }}
+
+    - name: Generate changelog
+      if: steps.check_version.outputs.EXISTS == 'false'
+      id: changelog
+      run: |
+        # Получаем последний тег (исключая только что созданный)
+        LAST_TAG=$(git tag --sort=-version:refname | grep -v "^${{ steps.version.outputs.VERSION }}$" | head -n 1)
+        
+        if [ -z "$LAST_TAG" ]; then
+          echo "No previous tags found, generating changelog from first commit"
+          CHANGELOG=$(git log --pretty=format:"- %s (%h)" --reverse | head -20)
+        else
+          echo "Generating changelog from $LAST_TAG to HEAD"
+          CHANGELOG=$(git log $LAST_TAG..HEAD~1 --pretty=format:"- %s (%h)" --reverse)
+        fi
+        
+        # Сохраняем в файл чтобы избежать проблем с экранированием
+        echo "$CHANGELOG" > /tmp/changelog.txt
+        echo "CHANGELOG_FILE=/tmp/changelog.txt" >> $GITHUB_OUTPUT
+        
+        echo "Generated changelog:"
+        echo "$CHANGELOG"
+
+    - name: Create Release
+      if: steps.check_version.outputs.EXISTS == 'false'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        CHANGELOG=$(cat ${{ steps.changelog.outputs.CHANGELOG_FILE }})
+        
+        gh release create ${{ steps.version.outputs.VERSION }} \
+          --title "Release ${{ steps.version.outputs.VERSION }}" \
+          --notes "## Auto Off Release ${{ steps.version.outputs.VERSION }}
+
+        ### Changes:
+        $CHANGELOG
+
+        ### Installation via HACS
+        1. Go to HACS in your Home Assistant
+        2. Click on \"Integrations\" 
+        3. Search for \"Auto Off\"
+        4. Install the integration
+
+        ### Manual Installation
+        1. Download the latest release
+        2. Copy the \`custom_components/auto_off\` folder to your Home Assistant \`custom_components\` directory
+        3. Restart Home Assistant" \
+          --latest
+
+    - name: Skip release (version exists or version bump)
+      if: steps.check_version.outputs.EXISTS == 'true'
+      run: |
+        echo "Skipping release creation - either version exists or this is a version bump commit" 

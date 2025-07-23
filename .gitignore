@@ -3,4 +3,5 @@
 /dev/config/.storage/
 /dev/config/blueprints/
 /dev/config/home-assistant.log*
-
+__pycache__/
+.ruff_cache/

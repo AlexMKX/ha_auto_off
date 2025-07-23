@@ -1,0 +1,103 @@
+name: Validate
+
+on:
+  pull_request:
+    branches: [ master ]
+  push:
+    branches: [ master ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 homeassistant
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+    - name: Lint with flake8
+      run: |
+        # Останавливаемся на серьезных ошибках синтаксиса или неопределенных именах
+        flake8 custom_components/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Выводим все остальные предупреждения как информацию (не останавливаем CI)
+        flake8 custom_components/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    - name: Validate manifest.json
+      run: |
+        python -c "
+        import json
+        import sys
+        
+        try:
+            with open('custom_components/auto_off/manifest.json', 'r') as f:
+                manifest = json.load(f)
+            
+            required_fields = ['domain', 'name', 'version', 'documentation', 'dependencies', 'codeowners']
+            missing_fields = [field for field in required_fields if field not in manifest]
+            
+            if missing_fields:
+                print(f'Missing required fields in manifest.json: {missing_fields}')
+                sys.exit(1)
+            
+            print('manifest.json is valid')
+            print(f'Domain: {manifest[\"domain\"]}')
+            print(f'Name: {manifest[\"name\"]}')
+            print(f'Version: {manifest[\"version\"]}')
+            
+        except Exception as e:
+            print(f'Error validating manifest.json: {e}')
+            sys.exit(1)
+        "
+
+    - name: Validate hacs.json
+      run: |
+        python -c "
+        import json
+        import sys
+        
+        try:
+            with open('hacs.json', 'r') as f:
+                hacs = json.load(f)
+            
+            required_fields = ['name', 'domains']
+            missing_fields = [field for field in required_fields if field not in hacs]
+            
+            if missing_fields:
+                print(f'Missing required fields in hacs.json: {missing_fields}')
+                sys.exit(1)
+            
+            print('hacs.json is valid')
+            print(f'Name: {hacs[\"name\"]}')
+            print(f'Domains: {hacs[\"domains\"]}')
+            
+        except Exception as e:
+            print(f'Error validating hacs.json: {e}')
+            sys.exit(1)
+        "
+
+    - name: Check Python import paths
+      run: |
+        python -c "
+        import sys
+        import os
+        sys.path.insert(0, 'custom_components')
+        
+        try:
+            from auto_off import AutoOffManager
+            from auto_off.const import DOMAIN
+            print('✓ All imports work correctly')
+        except ImportError as e:
+            print(f'❌ Import error: {e}')
+            sys.exit(1)
+        except Exception as e:
+            print(f'❌ Other error: {e}')
+            sys.exit(1)
+        " 

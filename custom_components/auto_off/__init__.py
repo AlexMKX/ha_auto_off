@@ -1,32 +1,29 @@
 import logging
 from homeassistant.core import HomeAssistant
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.helpers.typing import ConfigType
-from .auto_off import AutoOffManager
-import os
-import yaml
+from homeassistant.config_entries import ConfigEntry, SOURCE_IMPORT
+from .integration_manager import async_unload_integration
 
 _LOGGER = logging.getLogger(__name__)
 
-DOMAIN = "auto_off"
-
-async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up the HA Switch Auto Off integration from configuration.yaml."""
-    _LOGGER.info("Setting up HA Switch Auto Off integration")
-    conf = config.get(DOMAIN)
-    if not conf:
-        _LOGGER.error("No configuration found for %s", DOMAIN)
-        return False
-    # Поддержка отдельного YAML-файла (опционально)
-    yaml_path = conf.get("config_path")
-    if yaml_path and os.path.exists(yaml_path):
-        with open(yaml_path, "r") as f:
-            conf = yaml.safe_load(f)
-    manager = AutoOffManager(hass, conf)
-    hass.data[DOMAIN] = manager
-    await manager.async_initialize()
+async def async_setup(hass: HomeAssistant, config):
+    # Оставляем только сохранение yaml_config для совместимости
+    conf = config.get("auto_off")
+    if conf is not None:
+        hass.data.setdefault("auto_off", {})
+        hass.data["auto_off"]["yaml_config"] = conf
+        # Создаем config entry из YAML, если его нет
+        hass.async_create_task(
+            hass.config_entries.flow.async_init(
+                "auto_off", context={"source": SOURCE_IMPORT}, data=conf
+            )
+        )
     return True
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up HA Switch Auto Off from a config entry (future-proof)."""
+    await hass.config_entries.async_forward_entry_setups(entry, ["binary_sensor"])
+    return True
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    await hass.config_entries.async_forward_entry_unload(entry, "binary_sensor")
+    await async_unload_integration(hass, entry)
     return True

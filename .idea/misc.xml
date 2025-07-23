@@ -4,4 +4,7 @@
     <option name="sdkName" value="Python 3.11 (ha_switch_auto_off)" />
   </component>
   <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.13 (ha_switch_auto_off)" project-jdk-type="Python SDK" />
+  <component name="PythonCompatibilityInspectionAdvertiser">
+    <option name="version" value="3" />
+  </component>
 </project>

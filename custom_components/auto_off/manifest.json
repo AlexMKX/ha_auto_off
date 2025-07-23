@@ -1,10 +1,11 @@
 {
   "domain": "auto_off",
   "name": "Auto Off",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "documentation": "https://github.com/AlexMKX/auto_off",
   "requirements": ["jinja2", "pyyaml", "pydantic"],
   "dependencies": [],
   "codeowners": ["@AlexMKX"],
-  "config_flow": false
+  "iot_class": "local_polling",
+  "config_flow": true
 }

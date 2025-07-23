@@ -13,13 +13,122 @@ logger:
 
 # Пример интеграции
 auto_off:
-  sensors:
-    - sensors:
-        - binary_sensor.example1
-        - "{{ is_state('input_boolean.example2', 'on') and is_state('switch.example_switch', 'on') }}"
+  poll_interval: 16
+  groups:
+    group1:
+      sensors:
+          - binary_sensor.example_binary_sensor_2
+          - "{{ is_state('binary_sensor.example_binary_sensor_1', 'on') and is_state('switch.example_switch', 'on')  }}"
       targets:
         - light.example_light
-      delay: "10"
+      delay: "1"
+
+#auto_off:
+#  poll_interval: 60
+#  groups:
+#    hallway:
+#      sensors:
+#        - binary_sensor.f1_hallway_presence
+#        - binary_sensor.occupancy_f1_hallway_door_in_contact
+#        - binary_sensor.occupancy_f1_hallway_door_out_contact
+#        - binary_sensor.f1_hallway_motion_in_1_occupancy
+#        - binary_sensor.f1_hallway_motion_out_occupancy
+#        - binary_sensor.f1_bathroom_presence
+#      targets:
+#        - light.hallway1
+#        - light.hallway2
+#        - light.shower_light
+#        - light.showerroom_small
+#        - light.f1_showerroom_big
+#        - switch.f1_bathroom_preheater_pump
+#      delay: 10
+#    f1_hall_ac:
+#      sensors:
+#        - binary_sensor.f1_gost_occupancy
+#      targets:
+#        - climate.f1_gost_ac_sys
+#      delay: 20
+#    f2_kabinet_aircon:
+#      sensors:
+#        - binary_sensor.f2_kabinet_occupancy
+#      targets:
+#        - climate.f2_kabinet_ac_sys
+#      delay: "{{ 20 if states('sensor.f2_kabinet_airquality_f2_kabinet_airquality_temperature')|int (26)>26 else 10 }}"
+#    f2_kabinet_light:
+#      sensors:
+#        - binary_sensor.f2_kabinet_occupancy
+#      targets:
+#        - light.kabinet
+#        - light.f2_kabinet_desklamp_big
+#      delay: 5
+#    f2_balcony:
+#      sensors:
+#        - binary_sensor.f2_balcony_occupancy_group
+#      targets:
+#        - light.f2_balcony_dimmer
+#        - light.f2_balcony_dimmer_1_l1
+#        - light.f1_ladder_light
+#      delay: "{{1 if states('binary_sensor.outside_dark')=='on' else 5 }}"
+#    f1_kitchen:
+#      sensors:
+#        - binary_sensor.f1_kitchen_occupancy
+#      targets:
+#        - light.bar
+#        - light.boxes
+#        - light.cooking
+#        - light.dinner
+#        - light.workzone
+#        - switch.f1_bathroom_preheater_pump
+#      delay: "{{ 3 if states('switch.f1_hall_projector_switch') =='on' else 21 }}"
+#    f1_kitchen_light:
+#      sensors:
+#        - binary_sensor.f1_kitchen_occupancy
+#        - binary_sensor.f1_gost_occupancy
+#      targets:
+#        - light.f1_hall_light_big
+#        - light.f1_hall_light_small
+#      delay: 20
+#    f2_toilet_light:
+#      sensors:
+#        - binary_sensor.f2_toilet_presence
+#      targets:
+#        - light.f2_toilet_light
+#        - light.f2_toilet_lamp_row
+#      delay: 10
+#    f2_bedroom_all:
+#      sensors:
+#        - binary_sensor.f2_bedroom_presence
+#      targets:
+#        - climate.f2_bedroom_ac_sys
+#        - light.2f_bedroom_mirror_light
+#        - light.f2_bedroom_light_all
+#      delay: 20
+#    #"{{1 if states('binary_sensor.outside_dark')=='on' else 20 }}"
+#    f2_bedroom_red:
+#      sensors:
+#        - binary_sensor.f2_bedroom_motion
+#      targets:
+#        - light.f2_bedroom_bslamp
+#      delay: "{{1 if states('binary_sensor.outside_dark')=='on' else 20 }}"
+#    out_light_all:
+#      sensors:
+#        - binary_sensor.prisutstvie_na_ulitse
+#      targets:
+#        - light.out_light_all
+#      delay: 20
+#    mast_light:
+#      sensors:
+#        - binary_sensor.prisutstvie_v_masterskoi
+#      targets:
+#        - light.mast_light
+#        - switch.mast_waterheater
+#      delay: 20
+    # masha_room:
+    #   sensors:
+    #     - binary_sensor.f1_masha_presence
+    #   targets:
+    #     - switch.f1_masha_heatmat
+    #   delay: 10
 
 # Пример тестовых сущностей
 input_boolean:
@@ -39,11 +148,32 @@ light:
   - platform: demo
     name: Test Light
     unique_id: test_light
-  - platform: template
-    lights:
-      example_light:
-        friendly_name: "Example Light"
-        value_template: "{{ is_state('input_boolean.example_light', 'on') }}"
+
+# --- Template entities (binary sensors and switches) ---
+template:
+  - binary_sensor:
+      - name: "example1"
+        unique_id: "example1"
+        state: "{{ is_state('input_boolean.example1', 'on') }}"
+      - name: "example1"
+        unique_id: "example2"
+        state: "{{ is_state('input_boolean.example2', 'on') }}"
+  - switch:
+      - name: "Example Switch"
+        unique_id: "example_switch"
+        state: "{{ is_state('input_boolean.example_switch', 'on') }}"
+        turn_on:
+          service: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.example_switch
+        turn_off:
+          service: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.example_switch
+  - light:
+      - name: "Example Light"
+        unique_id: "example_light"
+        state: "{{ is_state('input_boolean.example_light', 'on') }}"
         turn_on:
           service: input_boolean.turn_on
           target:
@@ -53,16 +183,6 @@ light:
           target:
             entity_id: input_boolean.example_light
 
-# --- Binary sensors (template) ---
-binary_sensor:
-  - platform: template
-    sensors:
-      example1:
-        friendly_name: "Example Binary Sensor 1"
-        value_template: "{{ is_state('input_boolean.example1', 'on') }}"
-      example2:
-        friendly_name: "Example Binary Sensor 2"
-        value_template: "{{ is_state('input_boolean.example2', 'on') }}"
 
 # --- Binary sensor group и остальные группы ---
 group:
@@ -78,20 +198,4 @@ group:
   example_light_group:
     name: "Example Light Group"
     entities:
-      - light.example_light
-
-# --- Switch (template) ---
-switch:
-  - platform: template
-    switches:
-      example_switch:
-        friendly_name: "Example Switch"
-        value_template: "{{ is_state('input_boolean.example_switch', 'on') }}"
-        turn_on:
-          service: input_boolean.turn_on
-          target:
-            entity_id: input_boolean.example_switch
-        turn_off:
-          service: input_boolean.turn_off
-          target:
-            entity_id: input_boolean.example_switch 
+      - light.example_light 
