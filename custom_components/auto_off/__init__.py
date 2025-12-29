@@ -17,6 +17,7 @@ from .const import (
     PLATFORMS,
 )
 from .integration_manager import async_unload_integration
+from .auto_off import AutoOffManager
 
 _LOGGER = logging.getLogger(__name__)
 
