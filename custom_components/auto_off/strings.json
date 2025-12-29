@@ -1,0 +1,52 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Auto Off Setup",
+        "description": "Configure the Auto Off integration. Groups can be added later using the set_group service.",
+        "data": {
+          "poll_interval": "Poll interval (seconds)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Auto Off is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Auto Off Options",
+        "data": {
+          "poll_interval": "Poll interval (seconds)"
+        }
+      }
+    }
+  },
+  "services": {
+    "set_group": {
+      "name": "Set Group",
+      "description": "Create or update an auto-off group with the specified configuration.",
+      "fields": {
+        "group_name": {
+          "name": "Group Name",
+          "description": "The unique name of the group."
+        },
+        "config": {
+          "name": "Configuration",
+          "description": "The group configuration in YAML format."
+        }
+      }
+    },
+    "delete_group": {
+      "name": "Delete Group",
+      "description": "Delete an auto-off group.",
+      "fields": {
+        "group_name": {
+          "name": "Group Name",
+          "description": "The name of the group to delete."
+        }
+      }
+    }
+  }
+}
