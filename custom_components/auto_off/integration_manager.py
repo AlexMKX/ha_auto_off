@@ -28,7 +28,7 @@ class IntegrationManager:
         self._remove_listener = None
 
     async def async_initialize(self):
-        # Инициализируем door_occupancy с передачей async_add_entities
+        # Initialize door_occupancy with async_add_entities
         self.door_occupancy._async_add_entities = self.async_add_entities
         await self.door_occupancy._discover_and_add_sensors()
         

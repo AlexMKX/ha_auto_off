@@ -13,7 +13,7 @@ _LOGGER = logging.getLogger(__name__)
 
 class DoorOccupancyManager:
     """
-    Менеджер: ищет entity_id подходящих дверей/замков/штор, управляет occupancy-сенсорами, сам вызывает async_add_entities для новых.
+    Manager: finds entity_ids of suitable doors/locks/covers, manages occupancy sensors, calls async_add_entities for new ones.
     """
     def __init__(self, hass: HomeAssistant, config_entry=None):
         self.hass = hass

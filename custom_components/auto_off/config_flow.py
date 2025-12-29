@@ -8,7 +8,7 @@ class AutoOffConfigFlow(config_entries.ConfigFlow, domain="auto_off"):
     async def async_step_import(self, import_config):
         """Handle import from YAML."""
         await self.async_set_unique_id("main")
-        # Проверяем, есть ли уже такая entry
+        # Check if such entry already exists
         entries = self._async_current_entries()
         if entries:
             return self.async_abort(reason="already_configured")

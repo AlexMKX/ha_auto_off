@@ -1,7 +1,7 @@
 {
   "domain": "auto_off",
   "name": "Auto Off",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "documentation": "https://github.com/AlexMKX/auto_off",
   "requirements": ["jinja2", "pyyaml", "pydantic"],
   "dependencies": [],

@@ -6,12 +6,12 @@ from .integration_manager import async_unload_integration
 _LOGGER = logging.getLogger(__name__)
 
 async def async_setup(hass: HomeAssistant, config):
-    # Оставляем только сохранение yaml_config для совместимости
+    # Only save yaml_config for compatibility
     conf = config.get("auto_off")
     if conf is not None:
         hass.data.setdefault("auto_off", {})
         hass.data["auto_off"]["yaml_config"] = conf
-        # Создаем config entry из YAML, если его нет
+        # Create config entry from YAML if it doesn't exist
         hass.async_create_task(
             hass.config_entries.flow.async_init(
                 "auto_off", context={"source": SOURCE_IMPORT}, data=conf
