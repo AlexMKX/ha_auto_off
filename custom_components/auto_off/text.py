@@ -1,7 +1,6 @@
 """Text entities for Auto Off group configuration."""
 import logging
-import yaml
-from typing import Any
+from typing import Any, Dict
 
 from homeassistant.components.text import TextEntity, TextMode
 from homeassistant.config_entries import ConfigEntry
@@ -9,7 +8,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, CONF_GROUPS
+from .const import DOMAIN, CONF_GROUPS, CONF_SENSORS, CONF_TARGETS, CONF_DELAY
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,8 +24,16 @@ async def async_setup_entry(
         manager.text_platform_ready(async_add_entities)
 
 
+def _config_to_display(config_dict: Dict) -> str:
+    """Convert config dict to display string."""
+    sensors = config_dict.get(CONF_SENSORS, [])
+    targets = config_dict.get(CONF_TARGETS, [])
+    delay = config_dict.get(CONF_DELAY, 0)
+    return f"sensors: {len(sensors)}, targets: {len(targets)}, delay: {delay}"
+
+
 class GroupConfigTextEntity(TextEntity):
-    """Text entity for editing group configuration in YAML format."""
+    """Text entity for displaying group configuration summary."""
 
     _attr_has_entity_name = True
     _attr_name = "Config"
@@ -38,13 +45,14 @@ class GroupConfigTextEntity(TextEntity):
         hass: HomeAssistant,
         entry: ConfigEntry,
         group_name: str,
-        config_yaml: str,
+        config_dict: Dict,
     ) -> None:
         """Initialize the text entity."""
         self.hass = hass
         self._entry = entry
         self._group_name = group_name
-        self._attr_native_value = config_yaml
+        self._config_dict = config_dict
+        self._attr_native_value = _config_to_display(config_dict)
         self._attr_unique_id = f"{DOMAIN}_{group_name}_config"
 
     @property
@@ -58,32 +66,25 @@ class GroupConfigTextEntity(TextEntity):
             sw_version="1.0",
         )
 
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return extra state attributes with full config."""
+        return {
+            CONF_SENSORS: self._config_dict.get(CONF_SENSORS, []),
+            CONF_TARGETS: self._config_dict.get(CONF_TARGETS, []),
+            CONF_DELAY: self._config_dict.get(CONF_DELAY, 0),
+        }
+
     async def async_set_value(self, value: str) -> None:
-        """Set the text value and update group configuration."""
-        try:
-            # Validate YAML
-            config_dict = yaml.safe_load(value)
-            if not isinstance(config_dict, dict):
-                _LOGGER.error(f"Invalid config format for group '{self._group_name}': must be a dictionary")
-                return
-
-            # Get manager and update group
-            manager = self.hass.data.get(DOMAIN)
-            if manager:
-                await manager.update_group_config(self._group_name, value)
-                self._attr_native_value = value
-                self.async_write_ha_state()
-                _LOGGER.info(f"Group '{self._group_name}' configuration updated")
-            else:
-                _LOGGER.error("Integration manager not found")
-
-        except yaml.YAMLError as e:
-            _LOGGER.error(f"Invalid YAML in group '{self._group_name}' config: {e}")
-        except Exception as e:
-            _LOGGER.error(f"Failed to update group '{self._group_name}' config: {e}")
+        """Set value is not supported - use set_group service instead."""
+        _LOGGER.warning(
+            f"Direct text edit not supported for group '{self._group_name}'. "
+            "Use auto_off.set_group service instead."
+        )
 
     @callback
-    def update_config(self, config_yaml: str) -> None:
+    def update_config(self, config_dict: Dict) -> None:
         """Update the config value externally."""
-        self._attr_native_value = config_yaml
+        self._config_dict = config_dict
+        self._attr_native_value = _config_to_display(config_dict)
         self.async_write_ha_state()
