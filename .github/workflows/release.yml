@@ -55,17 +55,29 @@ jobs:
       if: steps.check_version.outputs.EXISTS == 'false'
       run: |
         # Находим все manifest.json в custom_components и заменяем ${version} на реальную версию
+        VERSION="${{ steps.version.outputs.VERSION }}"
         find custom_components -name "manifest.json" -type f | while read manifest; do
-          echo "Processing: $manifest"
-          sed -i 's/\${version}/${{ steps.version.outputs.VERSION }}/g' "$manifest"
+          echo "Processing: $manifest with version $VERSION"
+          sed -i "s/\${version}/$VERSION/g" "$manifest"
           cat "$manifest"
         done
 
-    - name: Create tag
+    - name: Commit version update and create tag
       if: steps.check_version.outputs.EXISTS == 'false'
       run: |
-        git tag ${{ steps.version.outputs.VERSION }}
-        git push origin ${{ steps.version.outputs.VERSION }}
+        VERSION="${{ steps.version.outputs.VERSION }}"
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add custom_components/*/manifest.json
+        git commit -m "chore: set version to $VERSION for release [skip-release]"
+        git tag "$VERSION"
+        git push origin HEAD:master --tags
+
+    - name: Create release archive
+      if: steps.check_version.outputs.EXISTS == 'false'
+      run: |
+        # Создаём архив custom_components для релиза
+        zip -r auto_off.zip custom_components/
 
     - name: Generate changelog
       if: steps.check_version.outputs.EXISTS == 'false'
@@ -97,6 +109,7 @@ jobs:
         CHANGELOG=$(cat ${{ steps.changelog.outputs.CHANGELOG_FILE }})
         
         gh release create ${{ steps.version.outputs.VERSION }} \
+          auto_off.zip \
           --title "Release ${{ steps.version.outputs.VERSION }}" \
           --notes "## Auto Off Release ${{ steps.version.outputs.VERSION }}
 
@@ -110,8 +123,8 @@ jobs:
         4. Install the integration
 
         ### Manual Installation
-        1. Download the latest release
-        2. Copy the \`custom_components/auto_off\` folder to your Home Assistant \`custom_components\` directory
+        1. Download auto_off.zip from this release
+        2. Extract and copy the \`custom_components/auto_off\` folder to your Home Assistant \`custom_components\` directory
         3. Restart Home Assistant" \
           --latest
 
