@@ -51,28 +51,15 @@ jobs:
           echo "Version ${{ steps.version.outputs.VERSION }} is new"
         fi
 
-    - name: Update manifest.json
+    - name: Replace version placeholder in all manifest.json files
       if: steps.check_version.outputs.EXISTS == 'false'
       run: |
-        # Обновляем версию в manifest.json
-        python -c "
-        import json
-        with open('custom_components/auto_off/manifest.json', 'r') as f:
-            manifest = json.load(f)
-        manifest['version'] = '${{ steps.version.outputs.VERSION }}'
-        with open('custom_components/auto_off/manifest.json', 'w') as f:
-            json.dump(manifest, f, indent=2)
-        print(f'Updated manifest.json version to ${{ steps.version.outputs.VERSION }}')
-        "
-
-    - name: Commit and push version update
-      if: steps.check_version.outputs.EXISTS == 'false'
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add custom_components/auto_off/manifest.json
-        git commit -m "chore: bump version to ${{ steps.version.outputs.VERSION }} [skip-release]" || exit 0
-        git push
+        # Находим все manifest.json в custom_components и заменяем ${version} на реальную версию
+        find custom_components -name "manifest.json" -type f | while read manifest; do
+          echo "Processing: $manifest"
+          sed -i 's/\${version}/${{ steps.version.outputs.VERSION }}/g' "$manifest"
+          cat "$manifest"
+        done
 
     - name: Create tag
       if: steps.check_version.outputs.EXISTS == 'false'
