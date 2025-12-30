@@ -1,0 +1,36 @@
+set_group:
+  name: Set Group
+  description: Create or update an auto-off group with the specified configuration.
+  fields:
+    group_name:
+      name: Group Name
+      description: The unique name of the group.
+      required: true
+      example: "living_room_lights"
+      selector:
+        text:
+    config:
+      name: Configuration
+      description: The group configuration in YAML format.
+      required: true
+      example: |
+        sensors:
+          - binary_sensor.motion_living_room
+        targets:
+          - light.living_room
+        delay: 5
+      selector:
+        text:
+          multiline: true
+
+delete_group:
+  name: Delete Group
+  description: Delete an auto-off group.
+  fields:
+    group_name:
+      name: Group Name
+      description: The name of the group to delete.
+      required: true
+      example: "living_room_lights"
+      selector:
+        text:

@@ -31,7 +31,7 @@ class DoorOccupancyBinarySensor(BinarySensorEntity):
         _LOGGER.info(f"DoorOccupancyBinarySensor '{self._attr_name}' for '{source_entity_id}' initialized")
 
     async def async_added_to_hass(self):
-        # Привязываем config entry к устройству
+        # Bind config entry to device
 
         ent_reg = entity_registry.async_get(self.hass)
         dev_reg = device_registry.async_get(self.hass)
@@ -99,7 +99,7 @@ class DoorOccupancyBinarySensor(BinarySensorEntity):
         )
 
     def _set_occupancy_off_callback(self):
-        # Для совместимости с call_later (sync wrapper)
+        # For compatibility with call_later (sync wrapper)
         import asyncio
         asyncio.create_task(self._set_occupancy_off())
 
