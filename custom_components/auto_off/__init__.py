@@ -4,7 +4,7 @@ import voluptuous as vol
 
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.config_entries import ConfigEntry, SOURCE_IMPORT
-from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import config_validation as cv, device_registry as dr
 
 from .const import (
     DOMAIN,
@@ -154,3 +154,47 @@ async def _async_register_services(hass: HomeAssistant, entry: ConfigEntry) -> N
     hass.services.async_register(
         DOMAIN, SERVICE_DELETE_GROUP, handle_delete_group, schema=SERVICE_DELETE_GROUP_SCHEMA
     )
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, config_entry: ConfigEntry, device_entry: dr.DeviceEntry
+) -> bool:
+    """Remove a device from the integration via UI."""
+    # Extract group name from device identifiers
+    group_name = None
+    for identifier in device_entry.identifiers:
+        if identifier[0] == DOMAIN:
+            group_name = identifier[1]
+            break
+
+    if not group_name:
+        _LOGGER.warning(f"Could not find group name for device {device_entry.id}")
+        return False
+
+    try:
+        # Get current groups from config entry
+        current_groups = dict(config_entry.data.get(CONF_GROUPS, {}))
+
+        if group_name not in current_groups:
+            _LOGGER.warning(f"Group '{group_name}' not found in config")
+            return True  # Device can be removed anyway
+
+        # Remove group from config
+        del current_groups[group_name]
+
+        # Update config entry
+        new_data = dict(config_entry.data)
+        new_data[CONF_GROUPS] = current_groups
+        hass.config_entries.async_update_entry(config_entry, data=new_data)
+
+        # Get manager and remove group
+        manager = hass.data.get(DOMAIN)
+        if manager:
+            await manager.delete_group(group_name)
+            _LOGGER.info(f"Group '{group_name}' deleted via UI")
+
+        return True
+
+    except Exception as e:
+        _LOGGER.exception(f"Failed to remove device for group '{group_name}': {e}")
+        return False
