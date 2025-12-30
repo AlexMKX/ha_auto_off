@@ -1,6 +1,5 @@
 """Integration manager for Auto Off."""
 import asyncio
-import yaml
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers import entity_registry as er, device_registry as dr
@@ -17,12 +16,11 @@ _LOGGER = logging.getLogger(__name__)
 DEFAULT_POLL_INTERVAL = 15
 
 
-def parse_group_configs(groups_data: Dict[str, str]) -> Dict[str, GroupConfig]:
-    """Parse YAML strings into GroupConfig objects."""
+def parse_group_configs(groups_data: Dict[str, Dict]) -> Dict[str, GroupConfig]:
+    """Parse structured dicts into GroupConfig objects."""
     result = {}
-    for group_name, config_yaml in groups_data.items():
+    for group_name, config_dict in groups_data.items():
         try:
-            config_dict = yaml.safe_load(config_yaml)
             if isinstance(config_dict, dict):
                 result[group_name] = GroupConfig.model_validate(config_dict)
         except Exception as e:
@@ -48,7 +46,7 @@ class IntegrationManager:
         self.door_occupancy = DoorOccupancyManager(hass, entry)
         self._lock = asyncio.Lock()
         self._remove_listener = None
-        self._groups_yaml: Dict[str, str] = dict(groups_data)
+        self._groups_data: Dict[str, Dict] = dict(groups_data)
 
     def text_platform_ready(self, async_add_entities: AddEntitiesCallback) -> None:
         """Called when text platform is ready."""
@@ -64,10 +62,10 @@ class IntegrationManager:
         from .text import GroupConfigTextEntity
 
         new_entities = []
-        for group_name, config_yaml in self._groups_yaml.items():
+        for group_name, config_dict in self._groups_data.items():
             if group_name not in self._text_entities:
                 entity = GroupConfigTextEntity(
-                    self.hass, self.entry, group_name, config_yaml
+                    self.hass, self.entry, group_name, config_dict
                 )
                 self._text_entities[group_name] = entity
                 new_entities.append(entity)
@@ -97,14 +95,13 @@ class IntegrationManager:
             await self.auto_off.periodic_worker()
             await self.door_occupancy.periodic_discovery()
 
-    async def set_group(self, group_name: str, config_yaml: str, is_new: bool) -> None:
+    async def set_group(self, group_name: str, config_dict: Dict, is_new: bool) -> None:
         """Create or update a group."""
         try:
-            config_dict = yaml.safe_load(config_yaml)
             group_config = GroupConfig.model_validate(config_dict)
 
             # Update internal state
-            self._groups_yaml[group_name] = config_yaml
+            self._groups_data[group_name] = config_dict
 
             # Update AutoOffManager
             self.auto_off.config[group_name] = group_config
@@ -114,25 +111,25 @@ class IntegrationManager:
             if is_new and self._text_async_add_entities:
                 from .text import GroupConfigTextEntity
                 entity = GroupConfigTextEntity(
-                    self.hass, self.entry, group_name, config_yaml
+                    self.hass, self.entry, group_name, config_dict
                 )
                 self._text_entities[group_name] = entity
                 self._text_async_add_entities([entity])
                 _LOGGER.info(f"Created text entity for new group '{group_name}'")
             elif group_name in self._text_entities:
-                self._text_entities[group_name].update_config(config_yaml)
+                self._text_entities[group_name].update_config(config_dict)
 
         except Exception as e:
             _LOGGER.exception(f"Failed to set group '{group_name}': {e}")
             raise
 
-    async def update_group_config(self, group_name: str, config_yaml: str) -> None:
+    async def update_group_config(self, group_name: str, config_dict: Dict) -> None:
         """Update group config from text entity edit."""
-        await self.set_group(group_name, config_yaml, is_new=False)
+        await self.set_group(group_name, config_dict, is_new=False)
 
         # Also update config entry
         current_groups = dict(self.entry.data.get(CONF_GROUPS, {}))
-        current_groups[group_name] = config_yaml
+        current_groups[group_name] = config_dict
         new_data = dict(self.entry.data)
         new_data[CONF_GROUPS] = current_groups
         self.hass.config_entries.async_update_entry(self.entry, data=new_data)
@@ -141,8 +138,8 @@ class IntegrationManager:
         """Delete a group."""
         try:
             # Remove from internal state
-            if group_name in self._groups_yaml:
-                del self._groups_yaml[group_name]
+            if group_name in self._groups_data:
+                del self._groups_data[group_name]
 
             # Remove from AutoOffManager
             if group_name in self.auto_off.config:

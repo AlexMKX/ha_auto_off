@@ -1,7 +1,6 @@
 """Auto Off integration for Home Assistant."""
 import logging
 import voluptuous as vol
-import yaml
 
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.config_entries import ConfigEntry, SOURCE_IMPORT
@@ -11,7 +10,9 @@ from .const import (
     DOMAIN,
     CONF_GROUPS,
     CONF_GROUP_NAME,
-    CONF_GROUP_CONFIG,
+    CONF_SENSORS,
+    CONF_TARGETS,
+    CONF_DELAY,
     SERVICE_SET_GROUP,
     SERVICE_DELETE_GROUP,
     PLATFORMS,
@@ -23,7 +24,9 @@ _LOGGER = logging.getLogger(__name__)
 
 SERVICE_SET_GROUP_SCHEMA = vol.Schema({
     vol.Required(CONF_GROUP_NAME): cv.string,
-    vol.Required(CONF_GROUP_CONFIG): cv.string,
+    vol.Required(CONF_SENSORS): vol.All(cv.ensure_list, [cv.entity_id]),
+    vol.Required(CONF_TARGETS): vol.All(cv.ensure_list, [cv.entity_id]),
+    vol.Optional(CONF_DELAY, default=0): vol.Any(cv.positive_int, cv.string),
 })
 
 SERVICE_DELETE_GROUP_SCHEMA = vol.Schema({
@@ -78,26 +81,24 @@ async def _async_register_services(hass: HomeAssistant, entry: ConfigEntry) -> N
     async def handle_set_group(call: ServiceCall) -> None:
         """Handle set_group service call."""
         group_name = call.data[CONF_GROUP_NAME]
-        config_yaml = call.data[CONF_GROUP_CONFIG]
+        sensors = call.data[CONF_SENSORS]
+        targets = call.data[CONF_TARGETS]
+        delay = call.data.get(CONF_DELAY, 0)
 
         try:
-            # Validate YAML
-            config_dict = yaml.safe_load(config_yaml)
-            if not isinstance(config_dict, dict):
-                _LOGGER.error(f"Invalid config format for group '{group_name}': must be a dictionary")
-                return
-
-            # Validate required fields
-            if "sensors" not in config_dict or "targets" not in config_dict:
-                _LOGGER.error(f"Group '{group_name}' config must have 'sensors' and 'targets'")
-                return
+            # Build config dict
+            config_dict = {
+                CONF_SENSORS: sensors,
+                CONF_TARGETS: targets,
+                CONF_DELAY: delay,
+            }
 
             # Get current groups from config entry
             current_groups = dict(entry.data.get(CONF_GROUPS, {}))
             is_new_group = group_name not in current_groups
 
-            # Update groups
-            current_groups[group_name] = config_yaml
+            # Update groups with structured data
+            current_groups[group_name] = config_dict
 
             # Update config entry
             new_data = dict(entry.data)
@@ -107,13 +108,11 @@ async def _async_register_services(hass: HomeAssistant, entry: ConfigEntry) -> N
             # Get manager and update/create group
             manager = hass.data.get(DOMAIN)
             if manager:
-                await manager.set_group(group_name, config_yaml, is_new_group)
+                await manager.set_group(group_name, config_dict, is_new_group)
                 _LOGGER.info(f"Group '{group_name}' {'created' if is_new_group else 'updated'}")
             else:
                 _LOGGER.error("Integration manager not found")
 
-        except yaml.YAMLError as e:
-            _LOGGER.error(f"Invalid YAML for group '{group_name}': {e}")
         except Exception as e:
             _LOGGER.exception(f"Failed to set group '{group_name}': {e}")
 
