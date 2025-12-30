@@ -7,6 +7,7 @@ CONF_POLL_INTERVAL = "poll_interval"
 # Storage keys
 CONF_GROUPS = "groups"
 CONF_GROUP_NAME = "group_name"
+CONF_GROUP_CONFIG = "config"
 
 # Service names
 SERVICE_SET_GROUP = "set_group"

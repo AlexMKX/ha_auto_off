@@ -9,41 +9,19 @@ set_group:
       example: "living_room_lights"
       selector:
         text:
-    sensors:
-      name: Sensors
-      description: List of sensor entities that control the group (presence, motion, etc.).
+    config:
+      name: Configuration
+      description: The group configuration in YAML format.
       required: true
-      example:
-        - binary_sensor.motion_living_room
-      selector:
-        entity:
-          multiple: true
-          domain:
-            - binary_sensor
-            - input_boolean
-    targets:
-      name: Targets
-      description: List of target entities to turn off (lights, switches, etc.).
-      required: true
-      example:
-        - light.living_room
-        - switch.living_room_fan
-      selector:
-        entity:
-          multiple: true
-          domain:
-            - light
-            - switch
-            - fan
-            - climate
-    delay:
-      name: Delay
-      description: Delay in minutes before turning off targets (can be a template string).
-      required: false
-      default: 0
-      example: 5
+      example: |
+        sensors:
+          - binary_sensor.motion_living_room
+        targets:
+          - light.living_room
+        delay: 5
       selector:
         text:
+          multiline: true
 
 delete_group:
   name: Delete Group

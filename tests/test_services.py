@@ -1,14 +1,13 @@
 """Tests for auto_off services."""
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
+import yaml
 
 from custom_components.auto_off.const import (
     DOMAIN,
     CONF_GROUPS,
     CONF_GROUP_NAME,
-    CONF_SENSORS,
-    CONF_TARGETS,
-    CONF_DELAY,
+    CONF_GROUP_CONFIG,
 )
 
 
@@ -17,7 +16,7 @@ class TestSetGroupService:
 
     @pytest.mark.asyncio
     async def test_set_group_creates_new_group(
-        self, hass, config_entry, sample_group_config_dict
+        self, hass, config_entry, sample_group_config_yaml
     ):
         """Test set_group creates a new group."""
         from custom_components.auto_off import _async_register_services
@@ -34,13 +33,11 @@ class TestSetGroupService:
         set_group_call = hass.services.async_register.call_args_list[0]
         handler = set_group_call[0][2]
 
-        # Create service call with structured data
+        # Create service call
         call = MagicMock()
         call.data = {
             CONF_GROUP_NAME: "test_group",
-            CONF_SENSORS: sample_group_config_dict["sensors"],
-            CONF_TARGETS: sample_group_config_dict["targets"],
-            CONF_DELAY: sample_group_config_dict["delay"],
+            CONF_GROUP_CONFIG: sample_group_config_yaml,
         }
 
         # Execute
@@ -50,19 +47,19 @@ class TestSetGroupService:
         mock_manager.set_group.assert_called_once()
         call_args = mock_manager.set_group.call_args
         assert call_args[0][0] == "test_group"
-        assert call_args[0][1] == sample_group_config_dict
+        assert call_args[0][1] == sample_group_config_yaml
         assert call_args[0][2] is True  # is_new_group
 
     @pytest.mark.asyncio
     async def test_set_group_updates_existing_group(
-        self, hass, config_entry, sample_group_config_dict
+        self, hass, config_entry, sample_group_config_yaml
     ):
         """Test set_group updates an existing group."""
         from custom_components.auto_off import _async_register_services
 
-        # Pre-populate groups with existing config
+        # Pre-populate groups
         config_entry.data = {
-            CONF_GROUPS: {"test_group": {"sensors": [], "targets": [], "delay": 0}},
+            CONF_GROUPS: {"test_group": "old_config"},
             "poll_interval": 15,
         }
 
@@ -78,9 +75,7 @@ class TestSetGroupService:
         call = MagicMock()
         call.data = {
             CONF_GROUP_NAME: "test_group",
-            CONF_SENSORS: sample_group_config_dict["sensors"],
-            CONF_TARGETS: sample_group_config_dict["targets"],
-            CONF_DELAY: sample_group_config_dict["delay"],
+            CONF_GROUP_CONFIG: sample_group_config_yaml,
         }
 
         await handler(call)
@@ -89,8 +84,8 @@ class TestSetGroupService:
         assert call_args[0][2] is False  # is_new_group = False
 
     @pytest.mark.asyncio
-    async def test_set_group_with_valid_structured_data(self, hass, config_entry):
-        """Test set_group accepts valid structured data."""
+    async def test_set_group_validates_yaml(self, hass, config_entry):
+        """Test set_group validates YAML format."""
         from custom_components.auto_off import _async_register_services
 
         mock_manager = MagicMock()
@@ -105,20 +100,39 @@ class TestSetGroupService:
         call = MagicMock()
         call.data = {
             CONF_GROUP_NAME: "test_group",
-            CONF_SENSORS: ["binary_sensor.test"],
-            CONF_TARGETS: ["light.test"],
-            CONF_DELAY: 5,
+            CONF_GROUP_CONFIG: "invalid: yaml: syntax: [",  # Invalid YAML
+        }
+
+        # Should not raise, just log error
+        await handler(call)
+
+        # Manager should not be called due to invalid YAML
+        mock_manager.set_group.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_set_group_requires_sensors_and_targets(self, hass, config_entry):
+        """Test set_group requires sensors and targets fields."""
+        from custom_components.auto_off import _async_register_services
+
+        mock_manager = MagicMock()
+        mock_manager.set_group = AsyncMock()
+        hass.data[DOMAIN] = mock_manager
+
+        await _async_register_services(hass, config_entry)
+
+        set_group_call = hass.services.async_register.call_args_list[0]
+        handler = set_group_call[0][2]
+
+        call = MagicMock()
+        call.data = {
+            CONF_GROUP_NAME: "test_group",
+            CONF_GROUP_CONFIG: "delay: 5",  # Missing sensors and targets
         }
 
         await handler(call)
 
-        # Manager should be called with structured data
-        mock_manager.set_group.assert_called_once()
-        call_args = mock_manager.set_group.call_args
-        config_dict = call_args[0][1]
-        assert config_dict[CONF_SENSORS] == ["binary_sensor.test"]
-        assert config_dict[CONF_TARGETS] == ["light.test"]
-        assert config_dict[CONF_DELAY] == 5
+        # Manager should not be called due to missing required fields
+        mock_manager.set_group.assert_not_called()
 
 
 class TestDeleteGroupService:
@@ -130,7 +144,7 @@ class TestDeleteGroupService:
         from custom_components.auto_off import _async_register_services
 
         config_entry.data = {
-            CONF_GROUPS: {"test_group": {"sensors": [], "targets": [], "delay": 0}},
+            CONF_GROUPS: {"test_group": "some_config"},
             "poll_interval": 15,
         }
 

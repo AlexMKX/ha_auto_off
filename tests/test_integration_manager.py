@@ -1,6 +1,7 @@
 """Tests for auto_off integration manager."""
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
+import yaml
 
 from custom_components.auto_off.integration_manager import (
     IntegrationManager,
@@ -14,9 +15,9 @@ from custom_components.auto_off.const import DOMAIN, CONF_GROUPS, CONF_POLL_INTE
 class TestParseGroupConfigs:
     """Test parse_group_configs function."""
 
-    def test_parse_valid_config(self, sample_group_config_dict):
-        """Test parsing valid dict config."""
-        groups_data = {"test_group": sample_group_config_dict}
+    def test_parse_valid_config(self, sample_group_config_yaml):
+        """Test parsing valid YAML config."""
+        groups_data = {"test_group": sample_group_config_yaml}
         result = parse_group_configs(groups_data)
 
         assert "test_group" in result
@@ -24,9 +25,9 @@ class TestParseGroupConfigs:
         assert result["test_group"].targets == ["light.living_room"]
         assert result["test_group"].delay == 5
 
-    def test_parse_invalid_config(self):
-        """Test parsing invalid config returns empty."""
-        groups_data = {"bad_group": "not a dict"}
+    def test_parse_invalid_yaml(self):
+        """Test parsing invalid YAML returns empty."""
+        groups_data = {"bad_group": "invalid: yaml: ["}
         result = parse_group_configs(groups_data)
 
         assert "bad_group" not in result
@@ -39,8 +40,8 @@ class TestParseGroupConfigs:
     def test_parse_multiple_groups(self):
         """Test parsing multiple groups."""
         groups_data = {
-            "group1": {"sensors": ["sensor.a"], "targets": ["light.a"], "delay": 1},
-            "group2": {"sensors": ["sensor.b"], "targets": ["light.b"], "delay": 2},
+            "group1": "sensors:\n  - sensor.a\ntargets:\n  - light.a\ndelay: 1",
+            "group2": "sensors:\n  - sensor.b\ntargets:\n  - light.b\ndelay: 2",
         }
         result = parse_group_configs(groups_data)
 
@@ -77,36 +78,36 @@ class TestIntegrationManager:
 
     @pytest.mark.asyncio
     async def test_set_group_creates_new(
-        self, manager, sample_group_config_dict
+        self, manager, sample_group_config_yaml
     ):
         """Test set_group creates a new group."""
         manager._text_async_add_entities = MagicMock()
 
-        await manager.set_group("new_group", sample_group_config_dict, is_new=True)
+        await manager.set_group("new_group", sample_group_config_yaml, is_new=True)
 
-        assert "new_group" in manager._groups_data
-        assert manager._groups_data["new_group"] == sample_group_config_dict
+        assert "new_group" in manager._groups_yaml
+        assert manager._groups_yaml["new_group"] == sample_group_config_yaml
         manager.auto_off._init_groups.assert_called_once()
         manager._text_async_add_entities.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_set_group_updates_existing(
-        self, manager, sample_group_config_dict
+        self, manager, sample_group_config_yaml
     ):
         """Test set_group updates an existing group."""
-        manager._groups_data["existing_group"] = {"sensors": [], "targets": [], "delay": 0}
+        manager._groups_yaml["existing_group"] = "old_config"
         mock_text_entity = MagicMock()
         manager._text_entities["existing_group"] = mock_text_entity
 
-        await manager.set_group("existing_group", sample_group_config_dict, is_new=False)
+        await manager.set_group("existing_group", sample_group_config_yaml, is_new=False)
 
-        assert manager._groups_data["existing_group"] == sample_group_config_dict
-        mock_text_entity.update_config.assert_called_once_with(sample_group_config_dict)
+        assert manager._groups_yaml["existing_group"] == sample_group_config_yaml
+        mock_text_entity.update_config.assert_called_once_with(sample_group_config_yaml)
 
     @pytest.mark.asyncio
     async def test_delete_group(self, manager):
         """Test delete_group removes a group."""
-        manager._groups_data["to_delete"] = {"sensors": [], "targets": [], "delay": 0}
+        manager._groups_yaml["to_delete"] = "some_config"
         manager.auto_off.config["to_delete"] = MagicMock()
         mock_group = MagicMock()
         mock_group.async_unload = AsyncMock()
@@ -124,7 +125,7 @@ class TestIntegrationManager:
 
                 await manager.delete_group("to_delete")
 
-        assert "to_delete" not in manager._groups_data
+        assert "to_delete" not in manager._groups_yaml
         assert "to_delete" not in manager.auto_off.config
         mock_group.async_unload.assert_called_once()
 
@@ -152,9 +153,9 @@ class TestIntegrationManager:
         manager.auto_off.async_unload.assert_called_once()
         manager.door_occupancy.async_unload.assert_called_once()
 
-    def test_text_platform_ready(self, manager, sample_group_config_dict):
+    def test_text_platform_ready(self, manager, sample_group_config_yaml):
         """Test text_platform_ready creates entities for existing groups."""
-        manager._groups_data = {"group1": sample_group_config_dict}
+        manager._groups_yaml = {"group1": sample_group_config_yaml}
         mock_add_entities = MagicMock()
 
         with patch(

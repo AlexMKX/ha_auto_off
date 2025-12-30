@@ -36,12 +36,16 @@ class TestAutoOffIntegrationE2E:
         # Wait for services to register
         await asyncio.sleep(2)
 
-        # Call set_group service with structured data
+        # Call set_group service
+        config_yaml = """sensors:
+  - input_boolean.test_motion
+targets:
+  - input_boolean.test_light
+delay: 1
+"""
         await ha_instance.call_service("auto_off", "set_group", {
             "group_name": "test_group",
-            "sensors": ["input_boolean.test_motion"],
-            "targets": ["input_boolean.test_light"],
-            "delay": 1,
+            "config": config_yaml,
         })
 
         # Wait for entity to be created
@@ -65,11 +69,15 @@ class TestAutoOffIntegrationE2E:
             await asyncio.sleep(2)
 
         # Create a group with delay: 0 to turn off immediately when sensor is off
+        config_yaml = """sensors:
+  - input_boolean.test_motion_2
+targets:
+  - input_boolean.test_light_2
+delay: 0
+"""
         await ha_instance.call_service("auto_off", "set_group", {
             "group_name": "test_auto_off_group",
-            "sensors": ["input_boolean.test_motion_2"],
-            "targets": ["input_boolean.test_light_2"],
-            "delay": 0,
+            "config": config_yaml,
         })
         await asyncio.sleep(3)
 
@@ -104,11 +112,15 @@ class TestAutoOffIntegrationE2E:
     async def test_delete_group_service(self, ha_instance):
         """Test the delete_group service removes a group."""
         # First create a group
+        config_yaml = """sensors:
+  - input_boolean.test_motion
+targets:
+  - input_boolean.test_light
+delay: 5
+"""
         await ha_instance.call_service("auto_off", "set_group", {
             "group_name": "group_to_delete",
-            "sensors": ["input_boolean.test_motion"],
-            "targets": ["input_boolean.test_light"],
-            "delay": 5,
+            "config": config_yaml,
         })
         await asyncio.sleep(2)
 
@@ -131,20 +143,30 @@ class TestAutoOffIntegrationE2E:
     async def test_update_group_config(self, ha_instance):
         """Test updating an existing group's configuration."""
         # Create initial group
+        config_yaml_v1 = """sensors:
+  - input_boolean.test_motion
+targets:
+  - input_boolean.test_light
+delay: 5
+"""
         await ha_instance.call_service("auto_off", "set_group", {
             "group_name": "update_test_group",
-            "sensors": ["input_boolean.test_motion"],
-            "targets": ["input_boolean.test_light"],
-            "delay": 5,
+            "config": config_yaml_v1,
         })
         await asyncio.sleep(2)
 
         # Update the group with new config
+        config_yaml_v2 = """sensors:
+  - input_boolean.test_motion
+  - input_boolean.test_motion_2
+targets:
+  - input_boolean.test_light
+  - input_boolean.test_light_2
+delay: 10
+"""
         await ha_instance.call_service("auto_off", "set_group", {
             "group_name": "update_test_group",
-            "sensors": ["input_boolean.test_motion", "input_boolean.test_motion_2"],
-            "targets": ["input_boolean.test_light", "input_boolean.test_light_2"],
-            "delay": 10,
+            "config": config_yaml_v2,
         })
         await asyncio.sleep(2)
 
@@ -156,27 +178,26 @@ class TestAutoOffIntegrationE2E:
 class TestAutoOffServicesValidation:
     """Test service validation."""
 
-    async def test_set_group_with_valid_data(self, ha_instance):
-        """Test that valid structured data is accepted."""
+    async def test_set_group_invalid_yaml(self, ha_instance):
+        """Test that invalid YAML is rejected."""
+        # This should log an error but not crash
         try:
             await ha_instance.call_service("auto_off", "set_group", {
-                "group_name": "valid_group",
-                "sensors": ["input_boolean.test_motion"],
-                "targets": ["input_boolean.test_light"],
-                "delay": 5,
+                "group_name": "invalid_group",
+                "config": "invalid: yaml: [",
             })
-        except Exception as e:
-            pytest.fail(f"Valid service call should not fail: {e}")
+        except Exception:
+            pass  # Expected to fail or log error
         await asyncio.sleep(1)
 
     async def test_set_group_missing_required_fields(self, ha_instance):
         """Test that missing required fields are rejected."""
-        # Missing sensors and targets - should fail validation
+        # Missing sensors and targets
         try:
             await ha_instance.call_service("auto_off", "set_group", {
                 "group_name": "incomplete_group",
-                "delay": 5,
+                "config": "delay: 5",
             })
         except Exception:
-            pass  # Expected to fail
+            pass  # Expected to fail or log error
         await asyncio.sleep(1)
