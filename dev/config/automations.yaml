@@ -1,0 +1,55 @@
+# Test automations for auto_off integration
+
+# Test 1: Create a group via service call on startup
+- id: "test_auto_off_create_group"
+  alias: "Test: Create Auto Off Group"
+  description: "Create test_group via set_group service on HA start"
+  trigger:
+    - platform: homeassistant
+      event: start
+  action:
+    - delay:
+        seconds: 5
+    - service: auto_off.set_group
+      data:
+        group_name: test_group
+        sensors:
+          - binary_sensor.example1
+        targets:
+          - light.example_light
+          - switch.example_switch
+        delay: 1
+
+# Test 2: Update group when input_boolean changes
+- id: "test_auto_off_update_group"
+  alias: "Test: Update Auto Off Group"
+  description: "Update test_group delay when test_motion changes"
+  trigger:
+    - platform: state
+      entity_id: input_boolean.test_motion
+      to: "on"
+  action:
+    - service: auto_off.set_group
+      data:
+        group_name: test_group
+        sensors:
+          - binary_sensor.example1
+          - binary_sensor.example2
+        targets:
+          - light.example_light
+        delay: 2
+
+# Test 3: Delete group
+- id: "test_auto_off_delete_group"
+  alias: "Test: Delete Auto Off Group"
+  description: "Delete test_group when test_motion turns off"
+  trigger:
+    - platform: state
+      entity_id: input_boolean.test_motion
+      to: "off"
+      for:
+        seconds: 30
+  action:
+    - service: auto_off.delete_group
+      data:
+        group_name: test_group
