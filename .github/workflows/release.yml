@@ -69,7 +69,8 @@ jobs:
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add custom_components/*/manifest.json
-        git commit -m "chore: set version to $VERSION for release [skip-release]"
+        # Коммит может быть пустым если версия уже заменена, поэтому || true
+        git diff --cached --quiet || git commit -m "chore: set version to $VERSION for release [skip-release]"
         git tag "$VERSION"
         git push origin HEAD:master --tags
 
