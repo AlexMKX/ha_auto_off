@@ -8,7 +8,6 @@ import datetime
 from homeassistant.helpers.event import async_track_time_interval, async_track_state_change_event, async_track_template
 from datetime import timedelta
 import functools
-from .door_occupancy import DoorOccupancyManager
 
 _LOGGER = logging.getLogger(__name__)
 
