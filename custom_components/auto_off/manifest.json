@@ -1,7 +1,7 @@
 {
   "domain": "auto_off",
   "name": "Auto Off",
-  "version": "25123008",
+  "version": "25123009",
   "documentation": "https://github.com/AlexMKX/auto_off",
   "requirements": [
     "jinja2",
