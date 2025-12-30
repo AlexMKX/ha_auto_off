@@ -88,16 +88,15 @@ jobs:
         python -c "
         import sys
         import os
+        import traceback
         sys.path.insert(0, 'custom_components')
         
         try:
             from auto_off import AutoOffManager
             from auto_off.const import DOMAIN
             print('✓ All imports work correctly')
-        except ImportError as e:
-            print(f'❌ Import error: {e}')
-            sys.exit(1)
         except Exception as e:
-            print(f'❌ Other error: {e}')
+            print(f'❌ Error: {e}')
+            traceback.print_exc()
             sys.exit(1)
         " 
