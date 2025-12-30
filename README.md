@@ -2,6 +2,8 @@ Empty yet
 
 ## Auto Off Deadline Attribute
 
+
+
 When a group is being monitored for auto-off, the integration automatically sets a custom attribute `auto_off_deadline` for each target entity in the group:
 
 - If the target entity is ON and a deadline is set for the group, the attribute `auto_off_deadline` will contain the ISO 8601 timestamp of the scheduled auto-off deadline.
