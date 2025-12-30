@@ -31,8 +31,8 @@ jobs:
     - name: Generate version
       id: version
       run: |
-        # Генерируем версию в формате YYMMDDHH
-        VERSION=$(date '+%y%m%d%H')
+        # Генерируем версию в формате YYMMDDHHMM
+        VERSION=$(date '+%y%m%d%H%M')
         echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
         echo "Generated version: $VERSION"
 
