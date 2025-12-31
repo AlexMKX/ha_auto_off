@@ -11,8 +11,6 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
-    # Предотвращаем цикл - пропускаем если коммит от GitHub Action
-    if: "!contains(github.event.head_commit.message, '[skip-release]')"
     permissions:
       contents: write
       pull-requests: write
@@ -36,43 +34,28 @@ jobs:
         echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
         echo "Generated version: $VERSION"
 
-    - name: Check if version already exists or if this is a version bump commit
+    - name: Check if version tag already exists
       id: check_version
       run: |
         # Проверяем есть ли уже такой тег
         if git tag -l "${{ steps.version.outputs.VERSION }}" | grep -q "^${{ steps.version.outputs.VERSION }}$"; then
           echo "EXISTS=true" >> $GITHUB_OUTPUT
           echo "Version ${{ steps.version.outputs.VERSION }} already exists"
-        elif [[ "${{ github.event.head_commit.message }}" == *"chore: bump version"* ]]; then
-          echo "EXISTS=true" >> $GITHUB_OUTPUT
-          echo "Skipping - this is a version bump commit"
         else
           echo "EXISTS=false" >> $GITHUB_OUTPUT
           echo "Version ${{ steps.version.outputs.VERSION }} is new"
         fi
 
-    - name: Update version in all manifest.json files
+    - name: Update version in all manifest.json files (for archive only)
       if: steps.check_version.outputs.EXISTS == 'false'
       run: |
-        # Находим все manifest.json в custom_components и обновляем поле version с помощью jq
+        # Патчим version в manifest.json только для архива (не коммитим в ветку)
         VERSION="${{ steps.version.outputs.VERSION }}"
         find custom_components -name "manifest.json" -type f | while read manifest; do
           echo "Processing: $manifest with version $VERSION"
           jq --arg ver "$VERSION" '.version = $ver' "$manifest" > "${manifest}.tmp" && mv "${manifest}.tmp" "$manifest"
           cat "$manifest"
         done
-
-    - name: Commit version update and create tag
-      if: steps.check_version.outputs.EXISTS == 'false'
-      run: |
-        VERSION="${{ steps.version.outputs.VERSION }}"
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add custom_components/*/manifest.json
-        # Коммит может быть пустым если версия уже заменена, поэтому || true
-        git diff --cached --quiet || git commit -m "chore: set version to $VERSION for release [skip-release]"
-        git tag "$VERSION"
-        git push origin HEAD:master --tags
 
     - name: Create release archive
       if: steps.check_version.outputs.EXISTS == 'false'
@@ -92,7 +75,7 @@ jobs:
           CHANGELOG=$(git log --pretty=format:"- %s (%h)" --reverse | head -20)
         else
           echo "Generating changelog from $LAST_TAG to HEAD"
-          CHANGELOG=$(git log $LAST_TAG..HEAD~1 --pretty=format:"- %s (%h)" --reverse)
+          CHANGELOG=$(git log $LAST_TAG..HEAD --pretty=format:"- %s (%h)" --reverse)
         fi
         
         # Сохраняем в файл чтобы избежать проблем с экранированием
@@ -128,8 +111,3 @@ jobs:
         2. Extract and copy the \`custom_components/auto_off\` folder to your Home Assistant \`custom_components\` directory
         3. Restart Home Assistant" \
           --latest
-
-    - name: Skip release (version exists or version bump)
-      if: steps.check_version.outputs.EXISTS == 'true'
-      run: |
-        echo "Skipping release creation - either version exists or this is a version bump commit" 

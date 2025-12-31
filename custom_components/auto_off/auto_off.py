@@ -520,6 +520,11 @@ class SensorGroup:
             # Log state transitions
             await self._log_state_transitions(current_state)
             
+            # Check for expired deadlines BEFORE updating deadline attributes
+            # This handles the case when turn_off command didn't reach device
+            if current_state['target_on'] and current_state['all_sensors_off']:
+                await self._turn_off_expired_targets()
+            
             # Make deadline decisions
             await self._handle_deadline_logic(current_state)
             
@@ -553,7 +558,7 @@ class SensorGroup:
 
     def _log_current_state(self, state: dict):
         """Logs current group state"""
-        _LOGGER.info(f"[Checking Group {self.group_id}] target_on={state['target_on']}, "
+        _LOGGER.debug(f"[Checking Group {self.group_id}] target_on={state['target_on']}, "
                     f"all_sensors_off={state['all_sensors_off']}, deadline={state['human_deadline']}")
 
     def _is_first_run(self) -> bool:
@@ -611,8 +616,8 @@ class SensorGroup:
                 status_str = f"error: {e}"
             target_statuses.append(f"{getattr(t, 'raw', str(t))}: {status_str}")
 
-        _LOGGER.info(f"[Group {self.group_id}] Sensors: {sensor_statuses} | Targets: {target_statuses}")
-        _LOGGER.info(f"[Group {self.group_id}] State transition: "
+        _LOGGER.debug(f"[Group {self.group_id}] Sensors: {sensor_statuses} | Targets: {target_statuses}")
+        _LOGGER.debug(f"[Group {self.group_id}] State transition: "
                     f"last_all_sensors_off={self._last_all_sensors_off} -> all_sensors_off={state['all_sensors_off']}, "
                     f"last_any_target_on={self._last_any_target_on} -> any_target_on={state['target_on']}")
 
@@ -637,6 +642,15 @@ class SensorGroup:
         elif state['target_on'] and state['all_sensors_off'] and self._timer is None:
             # Timer lost (e.g. after restart) - check expired deadlines
             await self._check_expired_deadlines()
+
+    async def _turn_off_expired_targets(self):
+        """
+        Checks all targets for expired deadline attributes and turns them off.
+        Called on every periodic check when target is on and sensors are off.
+        This handles the case when turn_off command didn't reach device (zigbee etc.)
+        """
+        for target in self._targets:
+            await target.turn_off_expired()
 
     async def _check_expired_deadlines(self):
         """
@@ -705,6 +719,10 @@ class SensorGroup:
         return False
 
     async def _turn_off_targets(self):
+        # Clear timer state BEFORE turning off - timer has fired
+        self._timer = None
+        self._timer_deadline = None
+        
         tasks = []
         for target in self._targets:
             tasks.append(target.turn_off())
@@ -776,7 +794,7 @@ class AutoOffManager:
                 _LOGGER.error(f"Failed to initialize auto-off group '{group_id}': {e}")
 
     async def periodic_worker(self):
-        _LOGGER.info(f"Periodic worker started.")
+        _LOGGER.debug(f"Periodic worker started.")
         try:
             for group in self._groups.values():
                 # Check states and set deadlines
