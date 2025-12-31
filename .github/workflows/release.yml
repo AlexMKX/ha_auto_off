@@ -51,14 +51,14 @@ jobs:
           echo "Version ${{ steps.version.outputs.VERSION }} is new"
         fi
 
-    - name: Replace version placeholder in all manifest.json files
+    - name: Update version in all manifest.json files
       if: steps.check_version.outputs.EXISTS == 'false'
       run: |
-        # Находим все manifest.json в custom_components и заменяем ${version} на реальную версию
+        # Находим все manifest.json в custom_components и обновляем поле version с помощью jq
         VERSION="${{ steps.version.outputs.VERSION }}"
         find custom_components -name "manifest.json" -type f | while read manifest; do
           echo "Processing: $manifest with version $VERSION"
-          sed -i "s/\${version}/$VERSION/g" "$manifest"
+          jq --arg ver "$VERSION" '.version = $ver' "$manifest" > "${manifest}.tmp" && mv "${manifest}.tmp" "$manifest"
           cat "$manifest"
         done
 
