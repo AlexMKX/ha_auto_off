@@ -29,7 +29,14 @@ def _config_to_display(config_dict: Dict) -> str:
     sensors = config_dict.get(CONF_SENSORS, [])
     targets = config_dict.get(CONF_TARGETS, [])
     delay = config_dict.get(CONF_DELAY, 0)
-    return f"sensors: {len(sensors)}, targets: {len(targets)}, delay: {delay}"
+
+    lines = [f"Delay: {delay}s", "", "Sensors:"]
+    lines.extend(f"  • {s}" for s in sensors) if sensors else lines.append("  (none)")
+    lines.append("")
+    lines.append("Targets:")
+    lines.extend(f"  • {t}" for t in targets) if targets else lines.append("  (none)")
+
+    return "\n".join(lines)
 
 
 class GroupConfigTextEntity(TextEntity):

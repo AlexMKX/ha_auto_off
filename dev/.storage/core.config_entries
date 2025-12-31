@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "minor_version": 5,
+  "key": "core.config_entries",
+  "data": {
+    "entries": [
+      {"created_at":"2025-12-30T16:21:04.428304+00:00","data":{},"disabled_by":null,"discovery_keys":{},"domain":"sun","entry_id":"01KDR108SCBFZWSA0TFC7AB8MP","minor_version":1,"modified_at":"2025-12-30T16:21:04.428327+00:00","options":{},"pref_disable_new_entities":false,"pref_disable_polling":false,"source":"import","subentries":[],"title":"Sun","unique_id":null,"version":1},
+      {"created_at":"2025-12-30T16:21:04.798453+00:00","data":{},"disabled_by":null,"discovery_keys":{},"domain":"backup","entry_id":"01KDR1094YKDXNNQEP7T4B2C39","minor_version":1,"modified_at":"2025-12-30T16:21:04.798462+00:00","options":{},"pref_disable_new_entities":false,"pref_disable_polling":false,"source":"system","subentries":[],"title":"Backup","unique_id":null,"version":1},
+      {"created_at":"2025-12-30T16:21:09.183204+00:00","data":{"ignore_cec":[],"known_hosts":[],"user_id":"800682d7431e45309c03bb73f2decc39","uuid":[]},"disabled_by":null,"discovery_keys":{"zeroconf":[{"domain":"zeroconf","key":["_googlecast._tcp.local.","MiTV-AYFR0-43655fb9dcccfa11355affcd9ec2cfc4._googlecast._tcp.local."],"version":1}]},"domain":"cast","entry_id":"01KDR10DDZWCHN2Z8P0J69R1VH","minor_version":1,"modified_at":"2025-12-30T16:21:09.184819+00:00","options":{},"pref_disable_new_entities":false,"pref_disable_polling":false,"source":"zeroconf","subentries":[],"title":"Google Cast","unique_id":"cast","version":1}
+    ]
+  }
+}

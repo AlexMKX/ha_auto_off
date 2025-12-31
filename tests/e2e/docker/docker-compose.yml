@@ -1,0 +1,51 @@
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: ha_e2e_test
+    restart: "no"
+    volumes:
+      - ha_config:/config
+      - ./ha_config/configuration.yaml:/config/configuration.yaml:ro
+      - ../../../custom_components:/config/custom_components:ro
+    ports:
+      - "8123:8123"
+    environment:
+      - TZ=UTC
+    healthcheck:
+      test: ["CMD", "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "http://localhost:8123/api/" ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    networks:
+      - e2e_network
+
+  autoqa:
+    build:
+      context: .
+      dockerfile: Dockerfile.autoqa
+    container_name: autoqa
+    depends_on:
+      homeassistant:
+        condition: service_healthy
+    volumes:
+      - ../:/tests:ro
+      - ./test_results:/test_results
+      - ./screenshots:/screenshots
+    environment:
+      - HA_URL=http://homeassistant:8123
+      - HA_HOST=homeassistant
+      - HA_PORT=8123
+      - TEST_USER=user
+      - TEST_PASSWORD=user
+      - PYTHONUNBUFFERED=1
+    networks:
+      - e2e_network
+    command: ["python", "-m", "pytest", "/tests/test_e2e_playwright.py", "-v", "--html=/test_results/report.html", "--self-contained-html"]
+
+networks:
+  e2e_network:
+    driver: bridge
+
+volumes:
+  ha_config:

@@ -1,0 +1,124 @@
+homeassistant:
+  name: E2E Test Home
+  latitude: 55.7558
+  longitude: 37.6173
+  elevation: 156
+  unit_system: metric
+  time_zone: UTC
+  currency: USD
+  country: US
+  language: en
+
+http:
+  server_port: 8123
+  cors_allowed_origins:
+    - "*"
+
+logger:
+  default: info
+  logs:
+    custom_components.auto_off: debug
+    homeassistant.components.input_boolean: debug
+    homeassistant.components.light: debug
+    homeassistant.components.switch: debug
+
+# Test entities - input_boolean for sensors (motion detectors)
+input_boolean:
+  test_motion_sensor:
+    name: Test Motion Sensor
+    initial: off
+    icon: mdi:motion-sensor
+  
+  test_motion_sensor_2:
+    name: Test Motion Sensor 2
+    initial: off
+    icon: mdi:motion-sensor
+  
+  test_door_sensor:
+    name: Test Door Sensor
+    initial: off
+    icon: mdi:door
+
+# Template-based binary sensors (to simulate real motion sensors)
+template:
+  - binary_sensor:
+      - name: "Test Motion"
+        unique_id: "e2e_test_motion"
+        device_class: motion
+        state: "{{ is_state('input_boolean.test_motion_sensor', 'on') }}"
+      
+      - name: "Test Motion 2"
+        unique_id: "e2e_test_motion_2"
+        device_class: motion
+        state: "{{ is_state('input_boolean.test_motion_sensor_2', 'on') }}"
+      
+      - name: "Test Door"
+        unique_id: "e2e_test_door"
+        device_class: door
+        state: "{{ is_state('input_boolean.test_door_sensor', 'on') }}"
+
+  # Template-based light (controllable via input_boolean)
+  - light:
+      - name: "Test Light"
+        unique_id: "e2e_test_light"
+        state: "{{ is_state('input_boolean.test_light_state', 'on') }}"
+        turn_on:
+          service: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.test_light_state
+        turn_off:
+          service: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.test_light_state
+
+      - name: "Test Light 2"
+        unique_id: "e2e_test_light_2"
+        state: "{{ is_state('input_boolean.test_light_2_state', 'on') }}"
+        turn_on:
+          service: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.test_light_2_state
+        turn_off:
+          service: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.test_light_2_state
+
+  # Template-based switch
+  - switch:
+      - name: "Test Switch"
+        unique_id: "e2e_test_switch"
+        state: "{{ is_state('input_boolean.test_switch_state', 'on') }}"
+        turn_on:
+          service: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.test_switch_state
+        turn_off:
+          service: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.test_switch_state
+
+# Input booleans for light/switch state backing
+input_boolean:
+  test_motion_sensor:
+    name: Test Motion Sensor
+    initial: off
+  test_motion_sensor_2:
+    name: Test Motion Sensor 2
+    initial: off
+  test_door_sensor:
+    name: Test Door Sensor
+    initial: off
+  test_light_state:
+    name: Test Light State
+    initial: off
+  test_light_2_state:
+    name: Test Light 2 State
+    initial: off
+  test_switch_state:
+    name: Test Switch State
+    initial: off
+
+# Automation for testing (empty file)
+automation: []
+script: []
+scene: []

@@ -14,8 +14,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'docker'))
 
 # Configuration from environment
 HA_URL = os.environ.get("HA_URL", "http://homeassistant:8123")
-TEST_USER = os.environ.get("TEST_USER", "test_admin")
-TEST_PASSWORD = os.environ.get("TEST_PASSWORD", "test_password_123")
+TEST_USER = os.environ.get("TEST_USER", "user")
+TEST_PASSWORD = os.environ.get("TEST_PASSWORD", "user")
 
 
 class HAProvisioner:

@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "minor_version": 1,
+  "key": "auth",
+  "data": {
+    "users": [
+      {
+        "id": "07d5d4c3673e498c90d4971d51ca9c5c",
+        "group_ids": [
+          "system-read-only"
+        ],
+        "is_owner": false,
+        "is_active": true,
+        "name": "Home Assistant Content",
+        "system_generated": true,
+        "local_only": false
+      },
+      {
+        "id": "800682d7431e45309c03bb73f2decc39",
+        "group_ids": [
+          "system-admin"
+        ],
+        "is_owner": false,
+        "is_active": true,
+        "name": "Home Assistant Cast",
+        "system_generated": true,
+        "local_only": false
+      }
+    ],
+    "groups": [
+      {
+        "id": "system-admin",
+        "name": "Administrators"
+      },
+      {
+        "id": "system-users",
+        "name": "Users"
+      },
+      {
+        "id": "system-read-only",
+        "name": "Read Only"
+      }
+    ],
+    "credentials": [],
+    "refresh_tokens": [
+      {
+        "id": "5a5093d87ef94ca690f29695d52da1fb",
+        "user_id": "07d5d4c3673e498c90d4971d51ca9c5c",
+        "client_id": null,
+        "client_name": null,
+        "client_icon": null,
+        "token_type": "system",
+        "created_at": "2025-12-30T16:21:03.540961+00:00",
+        "access_token_expiration": 1800.0,
+        "token": "ce2d3fef7625d19beb53f973cd6310fb54071e7fc987946aaaadb1286ae41b48828ff2e1a2af1d9347da8c3f291d97169fe5e6bdec40e5d8c304dde1a577ddfa",
+        "jwt_key": "fc6bed6ddaa160e50d1c7b79fbcd4d5a90a10855a114b8d7edc0f0c47143de66212586a998938d1e86892ef82ce693fc37e1efacfdc3a08d35d09a5abba35748",
+        "last_used_at": null,
+        "last_used_ip": null,
+        "expire_at": null,
+        "credential_id": null,
+        "version": "2025.12.5"
+      },
+      {
+        "id": "325fb7a1b80147dbb687cc4517e7610f",
+        "user_id": "800682d7431e45309c03bb73f2decc39",
+        "client_id": null,
+        "client_name": null,
+        "client_icon": null,
+        "token_type": "system",
+        "created_at": "2025-12-30T16:21:09.184943+00:00",
+        "access_token_expiration": 1800.0,
+        "token": "50a7d30db8deb64b3fd4ead40cdaa52bd66f5d26af6b5c5003b0008d8e1dcc36bd6fda5b22adc1888c7213177d63b63263ec94555a6dc0e8c191377b373adbd5",
+        "jwt_key": "b863a979bdb7ca9d52bbeabb0ac73392b652fa8185a612701b577f0c1387ce2628a9fafb17d707ce97e4c2ebab3faa3e2fbaf7ba531ca6e2d481984f49d49683",
+        "last_used_at": null,
+        "last_used_ip": null,
+        "expire_at": null,
+        "credential_id": null,
+        "version": "2025.12.5"
+      }
+    ]
+  }
+}

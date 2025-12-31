@@ -1,0 +1,31 @@
+2025-12-30 19:21:02.631 WARNING (SyncWorker_0) [homeassistant.loader] We found a custom integration auto_off which has not been tested by Home Assistant. This component might cause stability problems, be sure to disable it if you experience issues with Home Assistant
+2025-12-30 19:21:03.537 WARNING (MainThread) [aiohttp_fast_zlib] zlib_ng and isal are not available, falling back to zlib, performance will be degraded.
+2025-12-30 19:21:04.074 ERROR (MainThread) [habluetooth.manager] Missing required permissions for Bluetooth management: Missing NET_ADMIN/NET_RAW capabilities for Bluetooth management. Automatic adapter recovery is unavailable. Add NET_ADMIN and NET_RAW capabilities to the container to enable it
+2025-12-30 19:21:06.498 WARNING (MainThread) [homeassistant.components.http.ban] Login attempt or request with invalid authentication from ip6-localhost (::1). Requested URL: '/api/websocket'. (Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36)
+2025-12-30 19:21:08.946 WARNING (ImportExecutor_0) [py.warnings] /home/alex/PycharmProjects/ha_switch_auto_off/venv/lib/python3.13/site-packages/miio/miot_device.py:23: FutureWarning: functools.partial will be a method descriptor in future Python versions; wrap it in enum.member() if you want to preserve the old behavior
+  Bool = partial(_str2bool)
+
+2025-12-30 19:21:22.381 ERROR (MainThread) [homeassistant] Error doing job: Future exception was never retrieved (None)
+aiodns.error.DNSError: (11, 'Could not contact DNS servers')
+2025-12-30 19:21:22.382 ERROR (MainThread) [homeassistant] Error doing job: Future exception was never retrieved (None)
+aiodns.error.DNSError: (11, 'Could not contact DNS servers')
+2025-12-30 19:21:22.382 ERROR (MainThread) [homeassistant] Error doing job: Future exception was never retrieved (None)
+aiodns.error.DNSError: (11, 'Could not contact DNS servers')
+2025-12-30 19:21:22.382 ERROR (MainThread) [homeassistant] Error doing job: Future exception was never retrieved (None)
+aiodns.error.DNSError: (11, 'Could not contact DNS servers')
+2025-12-30 19:21:22.382 ERROR (MainThread) [homeassistant] Error doing job: Future exception was never retrieved (None)
+aiodns.error.DNSError: (11, 'Could not contact DNS servers')
+2025-12-30 19:21:22.383 ERROR (MainThread) [homeassistant] Error doing job: Future exception was never retrieved (None)
+aiodns.error.DNSError: (11, 'Could not contact DNS servers')
+2025-12-30 19:21:22.383 ERROR (MainThread) [homeassistant] Error doing job: Future exception was never retrieved (None)
+aiodns.error.DNSError: (11, 'Could not contact DNS servers')
+2025-12-30 19:21:22.383 ERROR (MainThread) [homeassistant] Error doing job: Future exception was never retrieved (None)
+aiodns.error.DNSError: (11, 'Could not contact DNS servers')
+2025-12-30 19:21:22.383 ERROR (MainThread) [homeassistant] Error doing job: Future exception was never retrieved (None)
+aiodns.error.DNSError: (11, 'Could not contact DNS servers')
+2025-12-30 19:21:22.383 ERROR (MainThread) [homeassistant] Error doing job: Future exception was never retrieved (None)
+aiodns.error.DNSError: (11, 'Could not contact DNS servers')
+2025-12-30 19:21:22.383 ERROR (MainThread) [homeassistant] Error doing job: Future exception was never retrieved (None)
+aiodns.error.DNSError: (11, 'Could not contact DNS servers')
+2025-12-30 19:21:22.383 ERROR (MainThread) [homeassistant] Error doing job: Future exception was never retrieved (None)
+aiodns.error.DNSError: (11, 'Could not contact DNS servers')

@@ -1,0 +1,17 @@
+# Test results
+test_results/
+screenshots/
+
+# HA runtime data
+ha_config/.storage/
+ha_config/.cloud/
+ha_config/home-assistant_v2.db*
+ha_config/home-assistant.log*
+ha_config/tts/
+ha_config/deps/
+ha_config/.HA_VERSION
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/

@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "minor_version": 12,
+  "key": "core.device_registry",
+  "data": {
+    "devices": [
+      {"area_id":null,"config_entries":["01KDR108SCBFZWSA0TFC7AB8MP"],"config_entries_subentries":{"01KDR108SCBFZWSA0TFC7AB8MP":[null]},"configuration_url":null,"connections":[],"created_at":"2025-12-30T16:21:04.432275+00:00","disabled_by":null,"entry_type":"service","hw_version":null,"id":"d0a53cf57496d589d17752b82625eab4","identifiers":[["sun","01KDR108SCBFZWSA0TFC7AB8MP"]],"labels":[],"manufacturer":null,"model":null,"model_id":null,"modified_at":"2025-12-30T16:21:04.432333+00:00","name_by_user":null,"name":"Sun","primary_config_entry":"01KDR108SCBFZWSA0TFC7AB8MP","serial_number":null,"sw_version":null,"via_device_id":null},
+      {"area_id":null,"config_entries":["01KDR1094YKDXNNQEP7T4B2C39"],"config_entries_subentries":{"01KDR1094YKDXNNQEP7T4B2C39":[null]},"configuration_url":"homeassistant://config/backup","connections":[],"created_at":"2025-12-30T16:21:04.835140+00:00","disabled_by":null,"entry_type":"service","hw_version":null,"id":"1df0e58d305b15b1fa6c2c88df6d0d70","identifiers":[["backup","backup_manager"]],"labels":[],"manufacturer":"Home Assistant","model":"Home Assistant Backup","model_id":null,"modified_at":"2025-12-30T16:21:04.835213+00:00","name_by_user":null,"name":"Backup","primary_config_entry":"01KDR1094YKDXNNQEP7T4B2C39","serial_number":null,"sw_version":"2025.12.5","via_device_id":null},
+      {"area_id":null,"config_entries":["01KDR10DDZWCHN2Z8P0J69R1VH"],"config_entries_subentries":{"01KDR10DDZWCHN2Z8P0J69R1VH":[null]},"configuration_url":null,"connections":[],"created_at":"2025-12-30T16:21:09.793597+00:00","disabled_by":null,"entry_type":null,"hw_version":null,"id":"24d21f52cc5f091f673382e893685b10","identifiers":[["cast","43655fb9dcccfa11355affcd9ec2cfc4"]],"labels":[],"manufacturer":"Xiaomi","model":"MiTV-AYFR0","model_id":null,"modified_at":"2025-12-30T16:21:09.793727+00:00","name_by_user":null,"name":"ТВ-приставка Mi TV Stick","primary_config_entry":"01KDR10DDZWCHN2Z8P0J69R1VH","serial_number":null,"sw_version":null,"via_device_id":null}
+    ],
+    "deleted_devices": []
+  }
+}
