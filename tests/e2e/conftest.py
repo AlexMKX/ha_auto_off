@@ -292,6 +292,36 @@ class HAProvisioner:
                 resp.raise_for_status()
                 return await resp.json()
 
+    async def set_text_value(self, entity_id: str, value: str) -> None:
+        """Set value for a text entity via service call."""
+        headers = {"Authorization": f"Bearer {self.access_token}"}
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{self.ha_url}/api/services/text/set_value",
+                headers=headers,
+                json={"entity_id": entity_id, "value": value}
+            ) as resp:
+                if resp.status >= 400:
+                    text = await resp.text()
+                    raise RuntimeError(f"Failed to set text value: {text}")
+
+    async def get_config_entry(self, domain: str) -> dict:
+        """Get config entry for a domain."""
+        headers = {"Authorization": f"Bearer {self.access_token}"}
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{self.ha_url}/api/config/config_entries/entry",
+                headers=headers
+            ) as resp:
+                resp.raise_for_status()
+                entries = await resp.json()
+                for entry in entries:
+                    if entry.get("domain") == domain:
+                        return entry
+                return None
+
 
 @pytest.fixture(scope="session")
 def event_loop():

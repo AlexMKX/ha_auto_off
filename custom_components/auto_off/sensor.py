@@ -13,6 +13,17 @@ from .const import DOMAIN, CONF_SENSORS, CONF_TARGETS, CONF_DELAY
 _LOGGER = logging.getLogger(__name__)
 
 
+def _format_delay(seconds: int) -> str:
+    """Format delay in human-readable form."""
+    if seconds >= 60:
+        minutes = seconds // 60
+        remaining_seconds = seconds % 60
+        if remaining_seconds:
+            return f"{minutes}m {remaining_seconds}s"
+        return f"{minutes}m"
+    return f"{seconds}s"
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -50,7 +61,7 @@ class GroupConfigSensorEntity(SensorEntity):
         sensors = self._config_dict.get(CONF_SENSORS, [])
         targets = self._config_dict.get(CONF_TARGETS, [])
         delay = self._config_dict.get(CONF_DELAY, 0)
-        self._attr_native_value = f"{len(sensors)} sensors → {len(targets)} targets ({delay}s)"
+        self._attr_native_value = f"{len(sensors)} sensors → {len(targets)} targets ({_format_delay(delay)})"
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -71,7 +82,7 @@ class GroupConfigSensorEntity(SensorEntity):
         delay = self._config_dict.get(CONF_DELAY, 0)
         
         return {
-            "delay": f"{delay}s",
+            "delay": _format_delay(delay),
             "sensors": sensors,
             "targets": targets,
         }

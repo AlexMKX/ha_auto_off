@@ -37,6 +37,8 @@ class IntegrationManager:
         self._binary_sensor_async_add_entities = async_add_entities
         self._sensor_async_add_entities: Optional[AddEntitiesCallback] = None
         self._sensor_entities: Dict[str, Any] = {}
+        self._text_async_add_entities: Optional[AddEntitiesCallback] = None
+        self._text_entities: Dict[str, Any] = {}
         
         # Parse groups from config entry
         groups_data = entry.data.get(CONF_GROUPS, {})
@@ -73,6 +75,31 @@ class IntegrationManager:
         if new_entities:
             self._sensor_async_add_entities(new_entities)
             _LOGGER.info(f"Created {len(new_entities)} sensor entities for groups")
+
+    def text_platform_ready(self, async_add_entities: AddEntitiesCallback) -> None:
+        """Called when text platform is ready."""
+        self._text_async_add_entities = async_add_entities
+        self._create_text_entities_for_existing_groups()
+
+    def _create_text_entities_for_existing_groups(self) -> None:
+        """Create text entities for all existing groups."""
+        if not self._text_async_add_entities:
+            return
+
+        from .text import GroupTextEntities
+
+        new_entities = []
+        for group_name, config_dict in self._groups_data.items():
+            if group_name not in self._text_entities:
+                group_texts = GroupTextEntities(
+                    self.hass, self, group_name, config_dict
+                )
+                self._text_entities[group_name] = group_texts
+                new_entities.extend(group_texts.get_all())
+
+        if new_entities:
+            self._text_async_add_entities(new_entities)
+            _LOGGER.info(f"Created {len(new_entities)} text entities for groups")
 
     async def async_initialize(self):
         """Initialize the integration manager."""
@@ -119,6 +146,18 @@ class IntegrationManager:
             elif group_name in self._sensor_entities:
                 self._sensor_entities[group_name].update_config(config_dict)
 
+            # Create or update text entities
+            if is_new and self._text_async_add_entities:
+                from .text import GroupTextEntities
+                group_texts = GroupTextEntities(
+                    self.hass, self, group_name, config_dict
+                )
+                self._text_entities[group_name] = group_texts
+                self._text_async_add_entities(group_texts.get_all())
+                _LOGGER.info(f"Created text entities for new group '{group_name}'")
+            elif group_name in self._text_entities:
+                self._text_entities[group_name].update_config(config_dict)
+
         except Exception as e:
             _LOGGER.exception(f"Failed to set group '{group_name}': {e}")
             raise
@@ -157,6 +196,15 @@ class IntegrationManager:
                 if ent_reg and entity.entity_id:
                     ent_reg.async_remove(entity.entity_id)
 
+            # Remove text entities
+            if group_name in self._text_entities:
+                group_texts = self._text_entities.pop(group_name)
+                ent_reg = er.async_get(self.hass)
+                if ent_reg:
+                    for entity in group_texts.get_all():
+                        if entity.entity_id:
+                            ent_reg.async_remove(entity.entity_id)
+
             # Remove device
             dev_reg = dr.async_get(self.hass)
             if dev_reg:
@@ -178,6 +226,7 @@ class IntegrationManager:
         await self.auto_off.async_unload()
         await self.door_occupancy.async_unload()
         self._sensor_entities.clear()
+        self._text_entities.clear()
 
 
 default_manager = None
