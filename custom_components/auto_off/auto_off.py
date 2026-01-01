@@ -578,7 +578,7 @@ class SensorGroup:
             asyncio.create_task(self._set_deadline_from_delay("startup"))
 
     async def _set_deadline_from_delay(self, reason: str):
-        """Sets deadline based on delay from config"""
+        """Sets deadline based on delay from config (always replaces current deadline)"""
         delay = await self.get_delay()
         now = self.hass.loop.time()
         new_deadline = now + delay
@@ -587,6 +587,36 @@ class SensorGroup:
         now_real = datetime.datetime.now().astimezone()
         human_deadline = (now_real + datetime.timedelta(seconds=delay)).isoformat()
         _LOGGER.info(f"[Group {self.group_id}] Deadline set by {reason}: {delay}s | New deadline: {new_deadline} ({human_deadline})")
+
+    async def _extend_deadline_if_later(self, reason: str):
+        """Extends deadline only if new deadline would be later than current one.
+        
+        Used when a target turns on while a deadline already exists.
+        This prevents shortening the deadline when a new target activates.
+        """
+        delay = await self.get_delay()
+        now = self.hass.loop.time()
+        new_deadline = now + delay
+        
+        # If no deadline exists, set it
+        if self._timer_deadline is None:
+            self._start_deadline(force_deadline=new_deadline)
+            now_real = datetime.datetime.now().astimezone()
+            human_deadline = (now_real + datetime.timedelta(seconds=delay)).isoformat()
+            _LOGGER.info(f"[Group {self.group_id}] Deadline set by {reason}: {delay}s | New deadline: {new_deadline} ({human_deadline})")
+            return
+        
+        # Only extend if new deadline is later than current
+        if new_deadline > self._timer_deadline:
+            old_deadline = self._timer_deadline
+            self._start_deadline(force_deadline=new_deadline)
+            now_real = datetime.datetime.now().astimezone()
+            human_deadline = (now_real + datetime.timedelta(seconds=delay)).isoformat()
+            _LOGGER.info(f"[Group {self.group_id}] Deadline extended by {reason}: {delay}s | "
+                        f"Old: {old_deadline} -> New: {new_deadline} ({human_deadline})")
+        else:
+            _LOGGER.debug(f"[Group {self.group_id}] Deadline NOT extended by {reason}: "
+                         f"new ({new_deadline}) <= current ({self._timer_deadline})")
 
     async def _log_state_transitions(self, state: dict):
         """Logs detailed information about state transitions"""
@@ -644,12 +674,13 @@ class SensorGroup:
         # From here: target is ON and ALL sensors are OFF
         # This is the only case when deadline should exist
         
-        if transitions['target_turned_on']:
-            # Target just turned on while sensors are off -> set deadline
-            await self._set_deadline_from_delay("target turning ON while sensors off")
-        elif transitions['sensors_turned_off']:
-            # Sensors just turned off while target is on -> set deadline
+        if transitions['sensors_turned_off']:
+            # Sensors just turned off while target is on -> always set new deadline
             await self._set_deadline_from_delay("sensors turning OFF")
+        elif transitions['target_turned_on']:
+            # Target just turned on while sensors are off
+            # Only extend deadline if new would be later than current
+            await self._extend_deadline_if_later("target turning ON while sensors off")
         elif self._timer is None:
             # Timer lost (e.g. after restart) - check expired deadlines or set new
             await self._check_expired_deadlines()
