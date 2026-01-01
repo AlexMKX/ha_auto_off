@@ -445,7 +445,8 @@ class Target:
 
 
 class SensorGroup:
-    def __init__(self, hass: HomeAssistant, group_id: str, config: GroupConfig):
+    def __init__(self, hass: HomeAssistant, group_id: str, config: GroupConfig, 
+                 on_deadline_change: Optional[Callable[[str], None]] = None):
         self.hass = hass
         self.group_id = group_id
         self._config = config  # immutable
@@ -458,6 +459,8 @@ class SensorGroup:
         self._lock = asyncio.Lock()
         # Tracking previous states for transition detection
         self._last_any_target_on: Optional[bool] = None
+        # Callback when deadline changes (for updating sensor entity)
+        self._on_deadline_change = on_deadline_change
         self._init_from_config()
 
     def _init_from_config(self):
@@ -733,6 +736,11 @@ class SensorGroup:
         for target in self._targets:
             target.set_deadline(self._timer_deadline)
 
+    def _notify_deadline_change(self):
+        """Notify callback that deadline has changed."""
+        if self._on_deadline_change:
+            self._on_deadline_change(self.group_id)
+
     def _start_deadline(self, force_deadline=None):
         # This method is only called from check_and_set_deadline, which is already under lock
         if self._cancel_deadline():
@@ -746,6 +754,7 @@ class SensorGroup:
             self._timer = loop.call_later(delay, lambda: asyncio.create_task(self._turn_off_targets()))
             self._timer_deadline = loop.time() + delay
             _LOGGER.info(f"[{self.group_id}] All sensors are off/false. Deadline delay started.")
+            self._notify_deadline_change()
         else:
             asyncio.create_task(self._turn_off_targets())
             self._timer_deadline = None
@@ -758,12 +767,15 @@ class SensorGroup:
             self._timer.cancel()
             self._timer = None
         self._timer_deadline = None  # Always clear deadline when canceling
+        if had_timer:
+            self._notify_deadline_change()
         return had_timer
 
     async def _turn_off_targets(self):
         # Clear timer state BEFORE turning off - timer has fired
         self._timer = None
         self._timer_deadline = None
+        self._notify_deadline_change()
         
         tasks = []
         for target in self._targets:
@@ -810,12 +822,14 @@ class AutoOffManager:
     Manager for automatic device turn-off by events and timeout.
     """
 
-    def __init__(self, hass: HomeAssistant, config: Dict[str, GroupConfig]) -> None:
+    def __init__(self, hass: HomeAssistant, config: Dict[str, GroupConfig],
+                 on_deadline_change: Optional[Callable[[str], None]] = None) -> None:
         self.hass = hass
         self.config = config
         self._targets_state: Dict[str, Dict[str, Any]] = {}
         self._groups: Dict[str, SensorGroup] = {}
         self._tasks: List[Any] = []
+        self._on_deadline_change = on_deadline_change
         self._init_groups()
 
     def _init_groups(self):
@@ -830,7 +844,10 @@ class AutoOffManager:
         self._groups.clear()
         for group_id, group_config in self.config.items():
             try:
-                self._groups[group_id] = SensorGroup(self.hass, group_id, group_config)
+                self._groups[group_id] = SensorGroup(
+                    self.hass, group_id, group_config,
+                    on_deadline_change=self._on_deadline_change
+                )
                 _LOGGER.info(f"Initialized auto-off group '{group_id}' with {len(group_config.sensors)} sensors and {len(group_config.targets)} targets")
             except Exception as e:
                 _LOGGER.error(f"Failed to initialize auto-off group '{group_id}': {e}")

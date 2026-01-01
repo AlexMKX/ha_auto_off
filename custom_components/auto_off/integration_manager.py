@@ -45,7 +45,10 @@ class IntegrationManager:
         groups_data = entry.data.get(CONF_GROUPS, {})
         group_configs = parse_group_configs(groups_data)
         
-        self.auto_off = AutoOffManager(hass, group_configs)
+        self.auto_off = AutoOffManager(
+            hass, group_configs,
+            on_deadline_change=self._update_deadline_sensor_for_group
+        )
         self.door_occupancy = DoorOccupancyManager(hass, entry)
         self._lock = asyncio.Lock()
         self._remove_listener = None
