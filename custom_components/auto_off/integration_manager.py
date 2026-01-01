@@ -161,6 +161,12 @@ class IntegrationManager:
             # Update AutoOffManager
             self.auto_off.config[group_name] = group_config
             self.auto_off._init_groups()
+            
+            # Trigger immediate state check for new group
+            if is_new:
+                group = self.auto_off._groups.get(group_name)
+                if group:
+                    await group.check_and_set_deadline()
 
             # Create or update sensor entity
             if is_new and self._sensor_async_add_entities:
