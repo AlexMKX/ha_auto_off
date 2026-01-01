@@ -133,14 +133,22 @@ class IntegrationManager:
 
     def _update_deadline_sensors(self) -> None:
         """Update all deadline sensors with current deadline values."""
-        for group_name, deadline_entity in self._deadline_entities.items():
-            group = self.auto_off._groups.get(group_name)
-            if group:
-                deadline_str = group._get_human_deadline()
-                if deadline_str == "None":
-                    deadline_entity.update_deadline(None)
-                else:
-                    deadline_entity.update_deadline(deadline_str)
+        for group_name in self._deadline_entities:
+            self._update_deadline_sensor_for_group(group_name)
+
+    def _update_deadline_sensor_for_group(self, group_name: str) -> None:
+        """Update deadline sensor for a specific group."""
+        deadline_entity = self._deadline_entities.get(group_name)
+        if not deadline_entity:
+            return
+        
+        group = self.auto_off._groups.get(group_name)
+        if group:
+            deadline_str = group._get_human_deadline()
+            if deadline_str == "None":
+                deadline_entity.update_deadline(None)
+            else:
+                deadline_entity.update_deadline(deadline_str)
 
     async def set_group(self, group_name: str, config_dict: Dict, is_new: bool) -> None:
         """Create or update a group."""
@@ -173,6 +181,9 @@ class IntegrationManager:
                 
                 self._sensor_async_add_entities(new_sensors)
                 _LOGGER.info(f"Created sensor entities for new group '{group_name}'")
+                
+                # Immediately update deadline sensor with current deadline
+                self._update_deadline_sensor_for_group(group_name)
             elif group_name in self._sensor_entities:
                 self._sensor_entities[group_name].update_config(config_dict)
 
