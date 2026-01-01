@@ -158,7 +158,7 @@ class TestIntegrationManager:
         mock_add_entities = MagicMock()
 
         with patch(
-            "custom_components.auto_off.text.GroupConfigTextEntity"
+            "custom_components.auto_off.text.DelayTextEntity"
         ) as mock_entity_class:
             mock_entity_class.return_value = MagicMock()
             manager.text_platform_ready(mock_add_entities)

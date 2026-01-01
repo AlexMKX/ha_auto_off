@@ -36,13 +36,13 @@ RUN playwright install-deps chromium
 # Create directories for results
 RUN mkdir -p /test_results /screenshots
 
-# Copy test utilities to where tests are mounted
+# Copy provisioning and entrypoint
 COPY provisioning.py /app/
-COPY conftest_docker.py /app/conftest.py
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
-# Create symlinks so fixtures are accessible
+# Create test directory and copy e2e conftest there
 RUN mkdir -p /tests
+COPY conftest_e2e.py /tests/conftest.py
 
 ENTRYPOINT ["/app/entrypoint.sh"]

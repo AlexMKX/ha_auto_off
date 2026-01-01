@@ -9,8 +9,8 @@ import asyncio
 import aiohttp
 from typing import AsyncGenerator
 
-# Add docker directory to path for provisioning module
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'docker'))
+# Add app directory to path for provisioning module (copied there by Dockerfile)
+sys.path.insert(0, '/app')
 
 # Configuration from environment
 HA_URL = os.environ.get("HA_URL", "http://homeassistant:8123")
@@ -359,9 +359,9 @@ async def ha_with_integration(ha_provisioner: HAProvisioner) -> HAProvisioner:
 async def reset_test_entities(ha_with_integration: HAProvisioner):
     """Reset all test entities to off state before test."""
     entities = [
-        "input_boolean.test_motion_sensor",
-        "input_boolean.test_motion_sensor_2",
-        "input_boolean.test_door_sensor",
+        "input_boolean.test_motion_state",
+        "input_boolean.test_motion_2_state",
+        "input_boolean.test_door_state",
         "input_boolean.test_light_state",
         "input_boolean.test_light_2_state",
         "input_boolean.test_switch_state",
@@ -380,13 +380,27 @@ async def reset_test_entities(ha_with_integration: HAProvisioner):
 
 
 @pytest_asyncio.fixture
-async def logged_in_page(page, ha_provisioner):
+async def async_page():
+    """Async Playwright page for UI tests."""
+    from playwright.async_api import async_playwright
+    
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context()
+        page = await context.new_page()
+        yield page
+        await context.close()
+        await browser.close()
+
+
+@pytest_asyncio.fixture
+async def logged_in_page(async_page, ha_provisioner):
     """Page with logged-in Home Assistant session."""
-    await page.goto(HA_URL)
-    await page.wait_for_selector('input[name="username"]', timeout=30000)
-    await page.fill('input[name="username"]', TEST_USER)
-    await page.fill('input[name="password"]', TEST_PASSWORD)
-    await page.click('button[type="submit"]')
-    await page.wait_for_selector('home-assistant', timeout=30000)
+    await async_page.goto(HA_URL)
+    await async_page.wait_for_selector('input[name="username"]', timeout=30000)
+    await async_page.fill('input[name="username"]', TEST_USER)
+    await async_page.fill('input[name="password"]', TEST_PASSWORD)
+    await async_page.click('button[type="submit"]')
+    await async_page.wait_for_selector('home-assistant', timeout=30000)
     await asyncio.sleep(2)
-    yield page
+    yield async_page

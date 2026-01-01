@@ -5,8 +5,8 @@ services:
     restart: "no"
     volumes:
       - ha_config:/config
-      - ./ha_config/configuration.yaml:/config/configuration.yaml:ro
-      - ../../../custom_components:/config/custom_components:ro
+      - ./configuration.yaml:/config/configuration.yaml:ro
+      - ../custom_components:/config/custom_components:ro
     ports:
       - "8123:8123"
     environment:
@@ -22,14 +22,14 @@ services:
 
   autoqa:
     build:
-      context: .
+      context: ./autoqa
       dockerfile: Dockerfile.autoqa
     container_name: autoqa
     depends_on:
       homeassistant:
         condition: service_healthy
     volumes:
-      - ../:/tests:ro
+      - ./autoqa:/tests:ro
       - ./test_results:/test_results
       - ./screenshots:/screenshots
     environment:

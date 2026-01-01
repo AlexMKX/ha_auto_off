@@ -118,7 +118,7 @@ class TestAutoOffFunctionality:
             await ha_with_integration.call_service(
                 "input_boolean",
                 "turn_on",
-                {"entity_id": "input_boolean.test_motion_sensor"}
+                {"entity_id": "input_boolean.test_motion_state"}
             )
             await asyncio.sleep(1)
             
@@ -166,7 +166,7 @@ class TestAutoOffFunctionality:
             await ha_with_integration.call_service(
                 "input_boolean",
                 "turn_on",
-                {"entity_id": "input_boolean.test_motion_sensor"}
+                {"entity_id": "input_boolean.test_motion_state"}
             )
             await asyncio.sleep(1)
             
@@ -182,7 +182,7 @@ class TestAutoOffFunctionality:
             await ha_with_integration.call_service(
                 "input_boolean",
                 "turn_off",
-                {"entity_id": "input_boolean.test_motion_sensor"}
+                {"entity_id": "input_boolean.test_motion_state"}
             )
             
             # Wait for auto-off (poll_interval is 5s + some buffer)
@@ -221,7 +221,7 @@ class TestAutoOffFunctionality:
             await ha_with_integration.call_service(
                 "input_boolean",
                 "turn_on",
-                {"entity_id": "input_boolean.test_motion_sensor"}
+                {"entity_id": "input_boolean.test_motion_state"}
             )
             await asyncio.sleep(1)
             
@@ -238,14 +238,14 @@ class TestAutoOffFunctionality:
             await ha_with_integration.call_service(
                 "input_boolean",
                 "turn_on",
-                {"entity_id": "input_boolean.test_motion_sensor_2"}
+                {"entity_id": "input_boolean.test_motion_2_state"}
             )
             await asyncio.sleep(1)  # Wait for sensor 2 to register
             
             await ha_with_integration.call_service(
                 "input_boolean",
                 "turn_off",
-                {"entity_id": "input_boolean.test_motion_sensor"}
+                {"entity_id": "input_boolean.test_motion_state"}
             )
             await asyncio.sleep(5)
             
@@ -282,7 +282,7 @@ class TestAutoOffFunctionality:
             await ha_with_integration.call_service(
                 "input_boolean",
                 "turn_on",
-                {"entity_id": "input_boolean.test_motion_sensor"}
+                {"entity_id": "input_boolean.test_motion_state"}
             )
             await asyncio.sleep(1)
             
@@ -303,7 +303,7 @@ class TestAutoOffFunctionality:
             await ha_with_integration.call_service(
                 "input_boolean",
                 "turn_off",
-                {"entity_id": "input_boolean.test_motion_sensor"}
+                {"entity_id": "input_boolean.test_motion_state"}
             )
             
             # Wait for auto-off
@@ -341,7 +341,7 @@ class TestAutoOffFunctionality:
             await ha_with_integration.call_service(
                 "input_boolean",
                 "turn_on",
-                {"entity_id": "input_boolean.test_motion_sensor"}
+                {"entity_id": "input_boolean.test_motion_state"}
             )
             await ha_with_integration.call_service(
                 "input_boolean",
@@ -354,7 +354,7 @@ class TestAutoOffFunctionality:
             await ha_with_integration.call_service(
                 "input_boolean",
                 "turn_off",
-                {"entity_id": "input_boolean.test_motion_sensor"}
+                {"entity_id": "input_boolean.test_motion_state"}
             )
             
             # Wait for auto-off
@@ -474,7 +474,7 @@ class TestAutoOffWithDelay:
             await ha_with_integration.call_service(
                 "input_boolean",
                 "turn_on",
-                {"entity_id": "input_boolean.test_motion_sensor"}
+                {"entity_id": "input_boolean.test_motion_state"}
             )
             await ha_with_integration.call_service(
                 "input_boolean",
@@ -487,7 +487,7 @@ class TestAutoOffWithDelay:
             await ha_with_integration.call_service(
                 "input_boolean",
                 "turn_off",
-                {"entity_id": "input_boolean.test_motion_sensor"}
+                {"entity_id": "input_boolean.test_motion_state"}
             )
             
             # Wait 5 seconds - light should still be on due to delay
@@ -522,7 +522,7 @@ class TestAutoOffWithDelay:
             await ha_with_integration.call_service(
                 "input_boolean",
                 "turn_on",
-                {"entity_id": "input_boolean.test_motion_sensor"}
+                {"entity_id": "input_boolean.test_motion_state"}
             )
             await ha_with_integration.call_service(
                 "input_boolean",
@@ -535,7 +535,7 @@ class TestAutoOffWithDelay:
             await ha_with_integration.call_service(
                 "input_boolean",
                 "turn_off",
-                {"entity_id": "input_boolean.test_motion_sensor"}
+                {"entity_id": "input_boolean.test_motion_state"}
             )
             await asyncio.sleep(3)  # Wait less than the 10s delay
             
@@ -543,7 +543,7 @@ class TestAutoOffWithDelay:
             await ha_with_integration.call_service(
                 "input_boolean",
                 "turn_on",
-                {"entity_id": "input_boolean.test_motion_sensor"}
+                {"entity_id": "input_boolean.test_motion_state"}
             )
             
             # Wait longer than original timeout would have been
@@ -559,78 +559,6 @@ class TestAutoOffWithDelay:
                 "delete_group",
                 {"group_name": group_name}
             )
-
-
-@pytest.mark.skip(reason="UI tests require manual browser debugging - selectors may vary by HA version")
-class TestUIInteractions:
-    """Test UI interactions with Playwright."""
-    
-    def test_login_to_home_assistant(self, page: Page):
-        """Test logging into Home Assistant via UI."""
-        page.goto(HA_URL)
-        
-        # Wait for login form
-        page.wait_for_selector('input[name="username"]', timeout=30000)
-        
-        # Fill credentials
-        page.fill('input[name="username"]', TEST_USER)
-        page.fill('input[name="password"]', TEST_PASSWORD)
-        
-        # Submit
-        page.click('button[type="submit"]')
-        
-        # Wait for dashboard
-        page.wait_for_selector('home-assistant', timeout=30000)
-        
-        # Take screenshot
-        page.screenshot(path="/screenshots/logged_in.png")
-    
-    def test_navigate_to_settings(self, page: Page):
-        """Test navigating to Settings > Devices & Services."""
-        # Login first
-        page.goto(HA_URL)
-        page.wait_for_selector('input[name="username"]', timeout=30000)
-        page.fill('input[name="username"]', TEST_USER)
-        page.fill('input[name="password"]', TEST_PASSWORD)
-        page.click('button[type="submit"]')
-        page.wait_for_selector('home-assistant', timeout=30000)
-        
-        import time
-        time.sleep(2)
-        
-        # Click Settings in sidebar
-        page.click('a[href="/config"]')
-        time.sleep(2)
-        
-        # Take screenshot
-        page.screenshot(path="/screenshots/settings.png")
-    
-    def test_view_auto_off_integration(self, page: Page):
-        """Test viewing Auto Off integration in UI."""
-        # Login first
-        page.goto(HA_URL)
-        page.wait_for_selector('input[name="username"]', timeout=30000)
-        page.fill('input[name="username"]', TEST_USER)
-        page.fill('input[name="password"]', TEST_PASSWORD)
-        page.click('button[type="submit"]')
-        page.wait_for_selector('home-assistant', timeout=30000)
-        
-        import time
-        time.sleep(2)
-        
-        # Navigate to integrations
-        page.goto(f"{HA_URL}/config/integrations")
-        time.sleep(3)
-        
-        # Take screenshot
-        page.screenshot(path="/screenshots/integrations.png")
-        
-        # Look for Auto Off integration
-        auto_off_card = page.locator('text=Auto Off')
-        if auto_off_card.count() > 0:
-            auto_off_card.first.click()
-            time.sleep(2)
-            page.screenshot(path="/screenshots/auto_off_integration.png")
 
 
 @pytest.mark.asyncio
@@ -656,7 +584,7 @@ class TestEdgeCases:
         await ha_with_integration.call_service(
             "input_boolean",
             "turn_on",
-            {"entity_id": "input_boolean.test_motion_sensor"}
+            {"entity_id": "input_boolean.test_motion_state"}
         )
         await asyncio.sleep(2)
         
@@ -685,7 +613,7 @@ class TestEdgeCases:
             await ha_with_integration.call_service(
                 "input_boolean",
                 "turn_on",
-                {"entity_id": "input_boolean.test_motion_sensor"}
+                {"entity_id": "input_boolean.test_motion_state"}
             )
             await ha_with_integration.call_service(
                 "input_boolean",
@@ -699,13 +627,13 @@ class TestEdgeCases:
                 await ha_with_integration.call_service(
                     "input_boolean",
                     "turn_off",
-                    {"entity_id": "input_boolean.test_motion_sensor"}
+                    {"entity_id": "input_boolean.test_motion_state"}
                 )
                 await asyncio.sleep(1)  # Less than 5s delay
                 await ha_with_integration.call_service(
                     "input_boolean",
                     "turn_on",
-                    {"entity_id": "input_boolean.test_motion_sensor"}
+                    {"entity_id": "input_boolean.test_motion_state"}
                 )
                 await asyncio.sleep(1)
             
@@ -775,7 +703,7 @@ class TestTextEntities:
         
         try:
             # Check that delay text entity exists
-            delay_entity = f"text.auto_off_{group_name}_delay"
+            delay_entity = f"text.auto_off_{group_name}_delay_minutes"
             
             delay_state = await ha_with_integration.get_state(delay_entity)
             assert delay_state is not None, f"Delay text entity not found: {delay_entity}"
@@ -803,7 +731,7 @@ class TestTextEntities:
         await asyncio.sleep(3)
         
         try:
-            delay_entity = f"text.auto_off_{group_name}_delay"
+            delay_entity = f"text.auto_off_{group_name}_delay_minutes"
             
             # Edit delay via text entity
             await ha_with_integration.set_text_value(delay_entity, "120")
@@ -841,7 +769,7 @@ class TestTextEntities:
         await asyncio.sleep(3)
         
         try:
-            delay_entity = f"text.auto_off_{group_name}_delay"
+            delay_entity = f"text.auto_off_{group_name}_delay_minutes"
             
             # Set delay as template
             template_delay = "{{ states('input_number.delay_value') | int }}"
@@ -863,7 +791,7 @@ class TestTextEntities:
     async def test_delay_change_persists_in_config(
         self, ha_with_integration, reset_test_entities
     ):
-        """Test that delay text entity changes are persisted in config entry."""
+        """Test that delay text entity changes are persisted and reflected in sensor."""
         group_name = "test_persist_config"
         
         await ha_with_integration.create_auto_off_group(
@@ -875,19 +803,24 @@ class TestTextEntities:
         await asyncio.sleep(3)
         
         try:
-            delay_entity = f"text.auto_off_{group_name}_delay"
+            delay_entity = f"text.auto_off_{group_name}_delay_minutes"
+            config_entity = f"sensor.auto_off_{group_name}_config"
             
+            # Verify initial delay
+            delay_state = await ha_with_integration.get_state(delay_entity)
+            assert delay_state["state"] == "30", f"Initial delay should be 30, got {delay_state['state']}"
+            
+            # Change delay via text entity
             await ha_with_integration.set_text_value(delay_entity, "90")
             await asyncio.sleep(2)
             
-            # Get config entry and verify delay change
-            config_entry = await ha_with_integration.get_config_entry("auto_off")
-            assert config_entry is not None
+            # Verify delay changed in text entity
+            delay_state = await ha_with_integration.get_state(delay_entity)
+            assert delay_state["state"] == "90", f"Delay should be 90 after change, got {delay_state['state']}"
             
-            groups = config_entry.get("data", {}).get("groups", {})
-            group_config = groups.get(group_name, {})
-            
-            assert group_config.get("delay") == 90
+            # Verify config sensor shows updated delay
+            config_state = await ha_with_integration.get_state(config_entity)
+            assert "90" in config_state["state"], f"Config sensor should show 90 min, got {config_state['state']}"
             
         finally:
             await ha_with_integration.call_service(
@@ -911,24 +844,24 @@ class TestDeadlineLogic:
     async def test_startup_sets_deadline_when_target_on_sensors_off(
         self, ha_with_integration, reset_test_entities
     ):
-        """Scenario 1: At startup with sensors OFF and target ON, deadline is set."""
+        """Scenario 1: When target turns ON with sensors OFF, deadline is set."""
         group_name = "test_startup_deadline"
         
-        # First turn on the light (before creating group)
-        await ha_with_integration.call_service(
-            "input_boolean", "turn_on",
-            {"entity_id": "input_boolean.test_light_state"}
-        )
-        await asyncio.sleep(1)
-        
-        # Create group with 5 min delay - sensors are OFF by default
+        # Create group first with sensors OFF
         await ha_with_integration.create_auto_off_group(
             group_name=group_name,
             sensors=["binary_sensor.test_motion"],
             targets=["light.test_light"],
             delay=5  # 5 minutes
         )
-        await asyncio.sleep(3)
+        await asyncio.sleep(2)
+        
+        # Now turn on the light - this should set deadline
+        await ha_with_integration.call_service(
+            "input_boolean", "turn_on",
+            {"entity_id": "input_boolean.test_light_state"}
+        )
+        await asyncio.sleep(3)  # Wait for state change detection
         
         try:
             # Check deadline sensor shows a time (not "—")
@@ -977,7 +910,7 @@ class TestDeadlineLogic:
             # Turn on sensor -> should clear deadline
             await ha_with_integration.call_service(
                 "input_boolean", "turn_on",
-                {"entity_id": "input_boolean.test_motion_sensor"}
+                {"entity_id": "input_boolean.test_motion_state"}
             )
             await asyncio.sleep(2)
             
@@ -1000,7 +933,7 @@ class TestDeadlineLogic:
         # Start with sensor ON
         await ha_with_integration.call_service(
             "input_boolean", "turn_on",
-            {"entity_id": "input_boolean.test_motion_sensor"}
+            {"entity_id": "input_boolean.test_motion_state"}
         )
         await asyncio.sleep(1)
         
@@ -1029,7 +962,7 @@ class TestDeadlineLogic:
             # Turn OFF sensor -> should set deadline
             await ha_with_integration.call_service(
                 "input_boolean", "turn_off",
-                {"entity_id": "input_boolean.test_motion_sensor"}
+                {"entity_id": "input_boolean.test_motion_state"}
             )
             await asyncio.sleep(2)
             

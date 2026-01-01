@@ -1,6 +1,6 @@
 """Tests for auto_off delay text entity."""
 import pytest
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, patch
 
 from custom_components.auto_off.text import DelayTextEntity
 from custom_components.auto_off.const import DOMAIN, CONF_DELAY
@@ -59,5 +59,6 @@ class TestDelayTextEntity:
     def test_update_config(self, delay_entity):
         """Test update_config updates the value."""
         new_config = {CONF_DELAY: 60}
-        delay_entity.update_config(new_config)
+        with patch.object(delay_entity, 'async_write_ha_state'):
+            delay_entity.update_config(new_config)
         assert delay_entity._attr_native_value == "60"

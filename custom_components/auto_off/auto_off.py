@@ -517,7 +517,7 @@ class SensorGroup:
             
             # First run initialization
             if self._is_first_run():
-                self._handle_first_run(current_state)
+                await self._handle_first_run(current_state)
                 return
             
             # Log state transitions
@@ -569,7 +569,7 @@ class SensorGroup:
         """Checks if this is the first run"""
         return self._last_all_sensors_off is None or self._last_any_target_on is None
 
-    def _handle_first_run(self, state: dict):
+    async def _handle_first_run(self, state: dict):
         """Handles first system run"""
         _LOGGER.info(f"[Group {self.group_id}] First run initialization")
         self._last_all_sensors_off = state['all_sensors_off']
@@ -578,7 +578,7 @@ class SensorGroup:
         # At startup just set deadline if needed
         # Expired deadlines check will be in periodic worker
         if state['target_on'] and state['all_sensors_off'] and self._timer_deadline is None:
-            asyncio.create_task(self._set_deadline_from_delay("startup"))
+            await self._set_deadline_from_delay("startup")
 
     async def _set_deadline_from_delay(self, reason: str):
         """Sets deadline based on delay from config (always replaces current deadline)"""

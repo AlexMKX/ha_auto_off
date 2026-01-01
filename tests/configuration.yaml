@@ -1,0 +1,119 @@
+# Home Assistant configuration for E2E tests
+
+homeassistant:
+  name: E2E Test Home
+  unit_system: metric
+  time_zone: UTC
+
+# Enable default integrations
+default_config:
+
+# Template entities for testing
+template:
+  - binary_sensor:
+      - name: "Test Motion"
+        unique_id: test_motion
+        state: "{{ states('input_boolean.test_motion_state') }}"
+        device_class: motion
+      - name: "Test Motion 2"
+        unique_id: test_motion_2
+        state: "{{ states('input_boolean.test_motion_2_state') }}"
+        device_class: motion
+      - name: "Test Door"
+        unique_id: test_door
+        state: "{{ states('input_boolean.test_door_state') }}"
+        device_class: door
+
+  - sensor:
+      - name: "Test Sensor"
+        unique_id: test_sensor
+        state: "{{ states('input_number.test_sensor_value') }}"
+        unit_of_measurement: "units"
+
+# Input booleans to control template sensors and lights/switches
+input_boolean:
+  test_motion_state:
+    name: Test Motion State
+    initial: false
+  test_motion_2_state:
+    name: Test Motion 2 State
+    initial: false
+  test_door_state:
+    name: Test Door State
+    initial: false
+  test_light_state:
+    name: Test Light State
+    initial: false
+  test_light_2_state:
+    name: Test Light 2 State
+    initial: false
+  test_switch_state:
+    name: Test Switch State
+    initial: false
+
+# Input numbers for numeric sensors
+input_number:
+  test_sensor_value:
+    name: Test Sensor Value
+    initial: 0
+    min: 0
+    max: 100
+    step: 1
+  test_delay:
+    name: Test Delay
+    initial: 5
+    min: 1
+    max: 60
+    step: 1
+
+# Light entities for testing
+light:
+  - platform: template
+    lights:
+      test_light:
+        friendly_name: "Test Light"
+        unique_id: test_light
+        value_template: "{{ states('input_boolean.test_light_state') }}"
+        turn_on:
+          service: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.test_light_state
+        turn_off:
+          service: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.test_light_state
+      test_light_2:
+        friendly_name: "Test Light 2"
+        unique_id: test_light_2
+        value_template: "{{ states('input_boolean.test_light_2_state') }}"
+        turn_on:
+          service: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.test_light_2_state
+        turn_off:
+          service: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.test_light_2_state
+
+# Switch entities for testing
+switch:
+  - platform: template
+    switches:
+      test_switch:
+        friendly_name: "Test Switch"
+        unique_id: test_switch
+        value_template: "{{ states('input_boolean.test_switch_state') }}"
+        turn_on:
+          service: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.test_switch_state
+        turn_off:
+          service: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.test_switch_state
+
+# Logger for debugging
+logger:
+  default: info
+  logs:
+    custom_components.auto_off: debug
