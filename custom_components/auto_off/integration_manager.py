@@ -94,20 +94,20 @@ class IntegrationManager:
         if not self._text_async_add_entities:
             return
 
-        from .text import GroupTextEntities
+        from .text import DelayTextEntity
 
         new_entities = []
         for group_name, config_dict in self._groups_data.items():
             if group_name not in self._text_entities:
-                group_texts = GroupTextEntities(
+                delay_entity = DelayTextEntity(
                     self.hass, self, group_name, config_dict
                 )
-                self._text_entities[group_name] = group_texts
-                new_entities.extend(group_texts.get_all())
+                self._text_entities[group_name] = delay_entity
+                new_entities.append(delay_entity)
 
         if new_entities:
             self._text_async_add_entities(new_entities)
-            _LOGGER.info(f"Created {len(new_entities)} text entities for groups")
+            _LOGGER.info(f"Created {len(new_entities)} delay text entities for groups")
 
     async def async_initialize(self):
         """Initialize the integration manager."""
@@ -176,15 +176,15 @@ class IntegrationManager:
             elif group_name in self._sensor_entities:
                 self._sensor_entities[group_name].update_config(config_dict)
 
-            # Create or update text entities
+            # Create or update delay text entity
             if is_new and self._text_async_add_entities:
-                from .text import GroupTextEntities
-                group_texts = GroupTextEntities(
+                from .text import DelayTextEntity
+                delay_entity = DelayTextEntity(
                     self.hass, self, group_name, config_dict
                 )
-                self._text_entities[group_name] = group_texts
-                self._text_async_add_entities(group_texts.get_all())
-                _LOGGER.info(f"Created text entities for new group '{group_name}'")
+                self._text_entities[group_name] = delay_entity
+                self._text_async_add_entities([delay_entity])
+                _LOGGER.info(f"Created delay text entity for new group '{group_name}'")
             elif group_name in self._text_entities:
                 self._text_entities[group_name].update_config(config_dict)
 
@@ -232,14 +232,12 @@ class IntegrationManager:
                 if ent_reg and entity.entity_id:
                     ent_reg.async_remove(entity.entity_id)
 
-            # Remove text entities
+            # Remove delay text entity
             if group_name in self._text_entities:
-                group_texts = self._text_entities.pop(group_name)
+                entity = self._text_entities.pop(group_name)
                 ent_reg = er.async_get(self.hass)
-                if ent_reg:
-                    for entity in group_texts.get_all():
-                        if entity.entity_id:
-                            ent_reg.async_remove(entity.entity_id)
+                if ent_reg and entity.entity_id:
+                    ent_reg.async_remove(entity.entity_id)
 
             # Remove device
             dev_reg = dr.async_get(self.hass)

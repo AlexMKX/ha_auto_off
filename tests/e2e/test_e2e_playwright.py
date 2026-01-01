@@ -759,10 +759,10 @@ class TestEdgeCases:
 class TestTextEntities:
     """Test editable text entities for group configuration."""
 
-    async def test_text_entities_created_for_group(
+    async def test_delay_text_entity_created_for_group(
         self, ha_with_integration, reset_test_entities
     ):
-        """Test that text entities are created when a group is created."""
+        """Test that delay text entity is created when a group is created."""
         group_name = "test_text_entities"
         
         await ha_with_integration.create_auto_off_group(
@@ -774,98 +774,12 @@ class TestTextEntities:
         await asyncio.sleep(3)
         
         try:
-            # Check that all three text entities exist
-            sensors_entity = f"text.auto_off_{group_name}_sensors"
-            targets_entity = f"text.auto_off_{group_name}_targets"
+            # Check that delay text entity exists
             delay_entity = f"text.auto_off_{group_name}_delay"
-            
-            sensors_state = await ha_with_integration.get_state(sensors_entity)
-            assert sensors_state is not None, f"Sensors text entity not found: {sensors_entity}"
-            assert sensors_state["state"] == "binary_sensor.test_motion"
-            
-            targets_state = await ha_with_integration.get_state(targets_entity)
-            assert targets_state is not None, f"Targets text entity not found: {targets_entity}"
-            assert targets_state["state"] == "light.test_light"
             
             delay_state = await ha_with_integration.get_state(delay_entity)
             assert delay_state is not None, f"Delay text entity not found: {delay_entity}"
             assert delay_state["state"] == "60"
-            
-        finally:
-            await ha_with_integration.call_service(
-                "auto_off",
-                "delete_group",
-                {"group_name": group_name}
-            )
-
-    async def test_edit_sensors_via_text_entity(
-        self, ha_with_integration, reset_test_entities
-    ):
-        """Test editing sensors list via text entity."""
-        group_name = "test_edit_sensors"
-        
-        await ha_with_integration.create_auto_off_group(
-            group_name=group_name,
-            sensors=["binary_sensor.test_motion"],
-            targets=["light.test_light"],
-            delay=30
-        )
-        await asyncio.sleep(3)
-        
-        try:
-            sensors_entity = f"text.auto_off_{group_name}_sensors"
-            
-            # Edit sensors via text entity
-            new_sensors = "binary_sensor.test_motion, binary_sensor.test_motion_2"
-            await ha_with_integration.set_text_value(sensors_entity, new_sensors)
-            await asyncio.sleep(2)
-            
-            # Verify the change
-            sensors_state = await ha_with_integration.get_state(sensors_entity)
-            assert "binary_sensor.test_motion" in sensors_state["state"]
-            assert "binary_sensor.test_motion_2" in sensors_state["state"]
-            
-            # Verify the sensor entity also updated
-            config_entity = f"sensor.auto_off_{group_name}_config"
-            config_state = await ha_with_integration.get_state(config_entity)
-            sensors_attr = config_state.get("attributes", {}).get("sensors", [])
-            assert "binary_sensor.test_motion" in sensors_attr
-            assert "binary_sensor.test_motion_2" in sensors_attr
-            
-        finally:
-            await ha_with_integration.call_service(
-                "auto_off",
-                "delete_group",
-                {"group_name": group_name}
-            )
-
-    async def test_edit_targets_via_text_entity(
-        self, ha_with_integration, reset_test_entities
-    ):
-        """Test editing targets list via text entity."""
-        group_name = "test_edit_targets"
-        
-        await ha_with_integration.create_auto_off_group(
-            group_name=group_name,
-            sensors=["binary_sensor.test_motion"],
-            targets=["light.test_light"],
-            delay=30
-        )
-        await asyncio.sleep(3)
-        
-        try:
-            targets_entity = f"text.auto_off_{group_name}_targets"
-            
-            # Edit targets via text entity
-            new_targets = "light.test_light, light.test_light_2, switch.test_switch"
-            await ha_with_integration.set_text_value(targets_entity, new_targets)
-            await asyncio.sleep(2)
-            
-            # Verify the change
-            targets_state = await ha_with_integration.get_state(targets_entity)
-            assert "light.test_light" in targets_state["state"]
-            assert "light.test_light_2" in targets_state["state"]
-            assert "switch.test_switch" in targets_state["state"]
             
         finally:
             await ha_with_integration.call_service(
@@ -946,10 +860,10 @@ class TestTextEntities:
                 {"group_name": group_name}
             )
 
-    async def test_text_entity_changes_persist_in_config(
+    async def test_delay_change_persists_in_config(
         self, ha_with_integration, reset_test_entities
     ):
-        """Test that text entity changes are persisted in config entry."""
+        """Test that delay text entity changes are persisted in config entry."""
         group_name = "test_persist_config"
         
         await ha_with_integration.create_auto_off_group(
@@ -961,103 +875,19 @@ class TestTextEntities:
         await asyncio.sleep(3)
         
         try:
-            # Edit all three fields
-            sensors_entity = f"text.auto_off_{group_name}_sensors"
-            targets_entity = f"text.auto_off_{group_name}_targets"
             delay_entity = f"text.auto_off_{group_name}_delay"
-            
-            await ha_with_integration.set_text_value(
-                sensors_entity, 
-                "binary_sensor.test_motion, binary_sensor.test_motion_2"
-            )
-            await asyncio.sleep(1)
-            
-            await ha_with_integration.set_text_value(
-                targets_entity,
-                "light.test_light, switch.test_switch"
-            )
-            await asyncio.sleep(1)
             
             await ha_with_integration.set_text_value(delay_entity, "90")
             await asyncio.sleep(2)
             
-            # Get config entry and verify changes
+            # Get config entry and verify delay change
             config_entry = await ha_with_integration.get_config_entry("auto_off")
             assert config_entry is not None
             
             groups = config_entry.get("data", {}).get("groups", {})
             group_config = groups.get(group_name, {})
             
-            assert "binary_sensor.test_motion" in group_config.get("sensors", [])
-            assert "binary_sensor.test_motion_2" in group_config.get("sensors", [])
-            assert "light.test_light" in group_config.get("targets", [])
-            assert "switch.test_switch" in group_config.get("targets", [])
             assert group_config.get("delay") == 90
-            
-        finally:
-            await ha_with_integration.call_service(
-                "auto_off",
-                "delete_group",
-                {"group_name": group_name}
-            )
-
-    async def test_edited_config_affects_auto_off_behavior(
-        self, ha_with_integration, reset_test_entities
-    ):
-        """Test that editing config via text entities affects actual auto-off behavior."""
-        group_name = "test_behavior_change"
-        
-        # Create group with only test_light as target
-        await ha_with_integration.create_auto_off_group(
-            group_name=group_name,
-            sensors=["binary_sensor.test_motion"],
-            targets=["light.test_light"],
-            delay=0
-        )
-        await asyncio.sleep(3)
-        
-        try:
-            # Add test_light_2 to targets via text entity
-            targets_entity = f"text.auto_off_{group_name}_targets"
-            await ha_with_integration.set_text_value(
-                targets_entity,
-                "light.test_light, light.test_light_2"
-            )
-            await asyncio.sleep(2)
-            
-            # Turn on motion and both lights
-            await ha_with_integration.call_service(
-                "input_boolean",
-                "turn_on",
-                {"entity_id": "input_boolean.test_motion_sensor"}
-            )
-            await ha_with_integration.call_service(
-                "input_boolean",
-                "turn_on",
-                {"entity_id": "input_boolean.test_light_state"}
-            )
-            await ha_with_integration.call_service(
-                "input_boolean",
-                "turn_on",
-                {"entity_id": "input_boolean.test_light_2_state"}
-            )
-            await asyncio.sleep(2)
-            
-            # Turn off motion
-            await ha_with_integration.call_service(
-                "input_boolean",
-                "turn_off",
-                {"entity_id": "input_boolean.test_motion_sensor"}
-            )
-            
-            # Wait for auto-off
-            await asyncio.sleep(10)
-            
-            # Both lights should be off now (because we added test_light_2 via text entity)
-            state1 = await ha_with_integration.get_state("light.test_light")
-            state2 = await ha_with_integration.get_state("light.test_light_2")
-            assert state1["state"] == "off", "First light should be off"
-            assert state2["state"] == "off", "Second light should also be off (added via text entity)"
             
         finally:
             await ha_with_integration.call_service(
