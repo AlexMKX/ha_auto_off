@@ -520,13 +520,14 @@ class SensorGroup:
             # Log state transitions
             await self._log_state_transitions(current_state)
             
-            # Check for expired deadlines BEFORE updating deadline attributes
-            # This handles the case when turn_off command didn't reach device
-            if current_state['target_on'] and current_state['all_sensors_off']:
-                await self._turn_off_expired_targets()
-            
-            # Make deadline decisions
+            # Make deadline decisions first
             await self._handle_deadline_logic(current_state)
+            
+            # Check for expired deadlines AFTER deadline logic
+            # Only when target is on, sensors are off, and we have a deadline
+            # This handles the case when turn_off command didn't reach device
+            if current_state['target_on'] and current_state['all_sensors_off'] and self._timer_deadline is not None:
+                await self._turn_off_expired_targets()
             
             # Save current state as previous
             self._update_last_states(current_state)
@@ -632,15 +633,25 @@ class SensorGroup:
         # Target is on - analyze state transitions
         transitions = self._analyze_state_transitions(state)
         
-        if transitions['target_turned_on'] and state['all_sensors_off']:
-            await self._set_deadline_from_delay("target turning ON")
-        elif transitions['sensors_turned_off'] and state['target_on']:
-            await self._set_deadline_from_delay("sensors turning OFF")
-        elif transitions['sensors_turned_on']:
+        # CRITICAL: If any sensor is ON, there should be NO deadline
+        # Deadline only exists when ALL sensors are OFF
+        if not state['all_sensors_off']:
+            # Sensors are ON - clear any existing deadline
             if self._cancel_deadline():
-                _LOGGER.info(f"[Group {self.group_id}] Deadline cancelled: sensor turned on")
-        elif state['target_on'] and state['all_sensors_off'] and self._timer is None:
-            # Timer lost (e.g. after restart) - check expired deadlines
+                _LOGGER.info(f"[Group {self.group_id}] Deadline cancelled: sensors are on")
+            return
+        
+        # From here: target is ON and ALL sensors are OFF
+        # This is the only case when deadline should exist
+        
+        if transitions['target_turned_on']:
+            # Target just turned on while sensors are off -> set deadline
+            await self._set_deadline_from_delay("target turning ON while sensors off")
+        elif transitions['sensors_turned_off']:
+            # Sensors just turned off while target is on -> set deadline
+            await self._set_deadline_from_delay("sensors turning OFF")
+        elif self._timer is None:
+            # Timer lost (e.g. after restart) - check expired deadlines or set new
             await self._check_expired_deadlines()
 
     async def _turn_off_expired_targets(self):
@@ -711,12 +722,12 @@ class SensorGroup:
 
     def _cancel_deadline(self) -> bool:
         # This method is only called from check_and_set_deadline, which is already under lock
+        had_timer = self._timer is not None
         if self._timer:
             self._timer.cancel()
             self._timer = None
-            return True
-        self._timer_deadline = None
-        return False
+        self._timer_deadline = None  # Always clear deadline when canceling
+        return had_timer
 
     async def _turn_off_targets(self):
         # Clear timer state BEFORE turning off - timer has fired
