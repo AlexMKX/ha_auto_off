@@ -902,8 +902,8 @@ class TestTextEntities:
             # Verify the sensor entity also shows updated delay
             config_entity = f"sensor.auto_off_{group_name}_config"
             config_state = await ha_with_integration.get_state(config_entity)
-            # Should show "2m" format
-            assert "2m" in config_state["state"]
+            # Should show "120 min" format (delay is in minutes)
+            assert "120 min" in config_state["state"]
             
         finally:
             await ha_with_integration.call_service(

@@ -13,15 +13,16 @@ from .const import DOMAIN, CONF_SENSORS, CONF_TARGETS, CONF_DELAY
 _LOGGER = logging.getLogger(__name__)
 
 
-def _format_delay(seconds: int) -> str:
-    """Format delay in human-readable form."""
-    if seconds >= 60:
-        minutes = seconds // 60
-        remaining_seconds = seconds % 60
-        if remaining_seconds:
-            return f"{minutes}m {remaining_seconds}s"
-        return f"{minutes}m"
-    return f"{seconds}s"
+def _format_delay_minutes(minutes) -> str:
+    """Format delay in human-readable form. Input is in minutes."""
+    try:
+        mins = int(minutes)
+        if mins == 1:
+            return "1 min"
+        return f"{mins} min"
+    except (ValueError, TypeError):
+        # Template string
+        return str(minutes)
 
 
 async def async_setup_entry(
@@ -61,7 +62,7 @@ class GroupConfigSensorEntity(SensorEntity):
         sensors = self._config_dict.get(CONF_SENSORS, [])
         targets = self._config_dict.get(CONF_TARGETS, [])
         delay = self._config_dict.get(CONF_DELAY, 0)
-        self._attr_native_value = f"{len(sensors)} sensors → {len(targets)} targets ({_format_delay(delay)})"
+        self._attr_native_value = f"{len(sensors)} sensors → {len(targets)} targets ({_format_delay_minutes(delay)})"
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -82,7 +83,7 @@ class GroupConfigSensorEntity(SensorEntity):
         delay = self._config_dict.get(CONF_DELAY, 0)
         
         return {
-            "delay": _format_delay(delay),
+            "delay_minutes": delay,
             "sensors": sensors,
             "targets": targets,
         }

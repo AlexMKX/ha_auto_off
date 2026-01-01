@@ -139,9 +139,9 @@ class TargetsTextEntity(BaseGroupTextEntity):
 
 
 class DelayTextEntity(BaseGroupTextEntity):
-    """Text entity for editing delay (can be template)."""
+    """Text entity for editing delay in minutes (can be template)."""
 
-    _attr_name = "Delay"
+    _attr_name = "Delay (minutes)"
 
     def __init__(
         self,
