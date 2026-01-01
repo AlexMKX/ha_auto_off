@@ -37,6 +37,7 @@ class IntegrationManager:
         self._binary_sensor_async_add_entities = async_add_entities
         self._sensor_async_add_entities: Optional[AddEntitiesCallback] = None
         self._sensor_entities: Dict[str, Any] = {}
+        self._deadline_entities: Dict[str, Any] = {}
         self._text_async_add_entities: Optional[AddEntitiesCallback] = None
         self._text_entities: Dict[str, Any] = {}
         
@@ -61,7 +62,7 @@ class IntegrationManager:
         if not self._sensor_async_add_entities:
             return
 
-        from .sensor import GroupConfigSensorEntity
+        from .sensor import GroupConfigSensorEntity, DeadlineSensorEntity
 
         new_entities = []
         for group_name, config_dict in self._groups_data.items():
@@ -71,6 +72,13 @@ class IntegrationManager:
                 )
                 self._sensor_entities[group_name] = entity
                 new_entities.append(entity)
+            
+            if group_name not in self._deadline_entities:
+                deadline_entity = DeadlineSensorEntity(
+                    self.hass, self.entry, group_name
+                )
+                self._deadline_entities[group_name] = deadline_entity
+                new_entities.append(deadline_entity)
 
         if new_entities:
             self._sensor_async_add_entities(new_entities)
@@ -121,6 +129,18 @@ class IntegrationManager:
         async with self._lock:
             await self.auto_off.periodic_worker()
             await self.door_occupancy.periodic_discovery()
+            self._update_deadline_sensors()
+
+    def _update_deadline_sensors(self) -> None:
+        """Update all deadline sensors with current deadline values."""
+        for group_name, deadline_entity in self._deadline_entities.items():
+            group = self.auto_off._groups.get(group_name)
+            if group:
+                deadline_str = group._get_human_deadline()
+                if deadline_str == "None":
+                    deadline_entity.update_deadline(None)
+                else:
+                    deadline_entity.update_deadline(deadline_str)
 
     async def set_group(self, group_name: str, config_dict: Dict, is_new: bool) -> None:
         """Create or update a group."""
@@ -136,13 +156,23 @@ class IntegrationManager:
 
             # Create or update sensor entity
             if is_new and self._sensor_async_add_entities:
-                from .sensor import GroupConfigSensorEntity
+                from .sensor import GroupConfigSensorEntity, DeadlineSensorEntity
+                new_sensors = []
+                
                 entity = GroupConfigSensorEntity(
                     self.hass, self.entry, group_name, config_dict
                 )
                 self._sensor_entities[group_name] = entity
-                self._sensor_async_add_entities([entity])
-                _LOGGER.info(f"Created sensor entity for new group '{group_name}'")
+                new_sensors.append(entity)
+                
+                deadline_entity = DeadlineSensorEntity(
+                    self.hass, self.entry, group_name
+                )
+                self._deadline_entities[group_name] = deadline_entity
+                new_sensors.append(deadline_entity)
+                
+                self._sensor_async_add_entities(new_sensors)
+                _LOGGER.info(f"Created sensor entities for new group '{group_name}'")
             elif group_name in self._sensor_entities:
                 self._sensor_entities[group_name].update_config(config_dict)
 
@@ -191,7 +221,13 @@ class IntegrationManager:
             # Remove sensor entity
             if group_name in self._sensor_entities:
                 entity = self._sensor_entities.pop(group_name)
-                # Remove entity from HA
+                ent_reg = er.async_get(self.hass)
+                if ent_reg and entity.entity_id:
+                    ent_reg.async_remove(entity.entity_id)
+
+            # Remove deadline entity
+            if group_name in self._deadline_entities:
+                entity = self._deadline_entities.pop(group_name)
                 ent_reg = er.async_get(self.hass)
                 if ent_reg and entity.entity_id:
                     ent_reg.async_remove(entity.entity_id)
@@ -226,6 +262,7 @@ class IntegrationManager:
         await self.auto_off.async_unload()
         await self.door_occupancy.async_unload()
         self._sensor_entities.clear()
+        self._deadline_entities.clear()
         self._text_entities.clear()
 
 

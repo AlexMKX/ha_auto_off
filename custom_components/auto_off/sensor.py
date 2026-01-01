@@ -93,3 +93,59 @@ class GroupConfigSensorEntity(SensorEntity):
         self._config_dict = config_dict
         self._update_state()
         self.async_write_ha_state()
+
+
+class DeadlineSensorEntity(SensorEntity):
+    """Sensor entity for displaying current deadline."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Deadline"
+    _attr_icon = "mdi:timer-outline"
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        group_name: str,
+    ) -> None:
+        """Initialize the deadline sensor entity."""
+        self.hass = hass
+        self._entry = entry
+        self._group_name = group_name
+        self._attr_unique_id = f"{DOMAIN}_{group_name}_deadline"
+        self._attr_native_value = None
+        self._deadline_iso: str | None = None
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device info for this entity."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._group_name)},
+            name=f"Auto Off: {self._group_name}",
+            manufacturer="Auto Off",
+            model="Sensor Group",
+            sw_version="1.0",
+        )
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return extra state attributes."""
+        return {
+            "deadline_iso": self._deadline_iso,
+        }
+
+    @callback
+    def update_deadline(self, deadline_str: str | None) -> None:
+        """Update deadline from external source."""
+        self._deadline_iso = deadline_str
+        if deadline_str:
+            try:
+                from datetime import datetime
+                deadline = datetime.fromisoformat(deadline_str)
+                # Format as human-readable
+                self._attr_native_value = deadline.strftime("%H:%M:%S")
+            except (ValueError, TypeError):
+                self._attr_native_value = deadline_str
+        else:
+            self._attr_native_value = "—"
+        self.async_write_ha_state()
