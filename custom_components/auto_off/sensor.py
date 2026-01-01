@@ -114,7 +114,7 @@ class DeadlineSensorEntity(SensorEntity):
         self._entry = entry
         self._group_name = group_name
         self._attr_unique_id = f"{DOMAIN}_{group_name}_deadline"
-        self._attr_native_value = None
+        self._attr_native_value = "—"  # No deadline initially
         self._deadline_iso: str | None = None
 
     @property
