@@ -67,15 +67,35 @@ jobs:
       if: steps.check_version.outputs.EXISTS == 'false'
       id: changelog
       run: |
-        # Получаем последний тег (исключая только что созданный)
-        LAST_TAG=$(git tag --sort=-version:refname | grep -v "^${{ steps.version.outputs.VERSION }}$" | head -n 1)
-        
-        if [ -z "$LAST_TAG" ]; then
-          echo "No previous tags found, generating changelog from first commit"
-          CHANGELOG=$(git log --pretty=format:"- %s (%h)" --reverse | head -20)
+        # Для push события берём коммиты из самого пуша
+        if [ "${{ github.event_name }}" == "push" ]; then
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.event.after }}"
+          
+          # Проверяем, не является ли before нулевым (первый пуш в ветку)
+          if [ "$BEFORE" == "0000000000000000000000000000000000000000" ]; then
+            echo "First push to branch, getting commits from last tag or all commits"
+            LAST_TAG=$(git tag --sort=-version:refname | head -n 1)
+            if [ -z "$LAST_TAG" ]; then
+              CHANGELOG=$(git log --pretty=format:"- %s (%h)" --reverse | head -20)
+            else
+              CHANGELOG=$(git log $LAST_TAG..HEAD --pretty=format:"- %s (%h)" --reverse)
+            fi
+          else
+            echo "Generating changelog from push: $BEFORE..$AFTER"
+            CHANGELOG=$(git log ${BEFORE}..${AFTER} --pretty=format:"- %s (%h)" --reverse)
+          fi
         else
-          echo "Generating changelog from $LAST_TAG to HEAD"
-          CHANGELOG=$(git log $LAST_TAG..HEAD --pretty=format:"- %s (%h)" --reverse)
+          # Для workflow_dispatch берём коммиты от последнего тега
+          LAST_TAG=$(git tag --sort=-version:refname | grep -v "^${{ steps.version.outputs.VERSION }}$" | head -n 1)
+          
+          if [ -z "$LAST_TAG" ]; then
+            echo "No previous tags found, generating changelog from first commit"
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" --reverse | head -20)
+          else
+            echo "Generating changelog from $LAST_TAG to HEAD"
+            CHANGELOG=$(git log $LAST_TAG..HEAD --pretty=format:"- %s (%h)" --reverse)
+          fi
         fi
         
         # Сохраняем в файл чтобы избежать проблем с экранированием

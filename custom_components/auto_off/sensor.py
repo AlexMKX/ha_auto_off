@@ -4,6 +4,7 @@ from typing import Any, Dict
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -83,6 +84,7 @@ class GroupConfigSensorEntity(SensorEntity):
         delay = self._config_dict.get(CONF_DELAY, 0)
         
         return {
+            ATTR_ENTITY_ID: sensors + targets,
             "delay_minutes": delay,
             "sensors": sensors,
             "targets": targets,
