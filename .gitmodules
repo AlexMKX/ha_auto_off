@@ -1,0 +1,3 @@
+[submodule "ha-test-kit"]
+	path = ha-test-kit
+	url = https://github.com/AlexMKX/ha-test-kit

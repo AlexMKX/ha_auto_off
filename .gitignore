@@ -5,3 +5,5 @@
 /dev/config/home-assistant.log*
 __pycache__/
 .ruff_cache/
+/remote
+.autoqa/

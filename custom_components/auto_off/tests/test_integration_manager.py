@@ -67,7 +67,7 @@ class TestIntegrationManager:
                 manager.auto_off = MagicMock()
                 manager.auto_off.config = {}
                 manager.auto_off._groups = {}
-                manager.auto_off._init_groups = MagicMock()
+                manager.auto_off.async_init_groups = AsyncMock()
                 manager.auto_off.async_unload = AsyncMock()
                 manager.door_occupancy = MagicMock()
                 manager.door_occupancy._discover_and_add_sensors = AsyncMock()
@@ -86,7 +86,7 @@ class TestIntegrationManager:
 
         assert "new_group" in manager._groups_data
         assert manager._groups_data["new_group"] == sample_group_config_dict
-        manager.auto_off._init_groups.assert_called_once()
+        manager.auto_off.async_init_groups.assert_awaited_once()
         manager._text_async_add_entities.assert_called_once()
 
     @pytest.mark.asyncio

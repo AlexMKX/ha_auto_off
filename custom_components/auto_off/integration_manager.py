@@ -1,22 +1,23 @@
 """Integration manager for Auto Off."""
 import asyncio
-from homeassistant.helpers.event import async_track_time_interval
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers import entity_registry as er, device_registry as dr
-from datetime import timedelta
 import logging
-from typing import Dict, Optional, Any
+from datetime import timedelta
+from typing import Any
+
+from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_time_interval
 
 from .auto_off import AutoOffManager, GroupConfig
+from .const import CONF_GROUPS, CONF_POLL_INTERVAL, DOMAIN
 from .door_occupancy import DoorOccupancyManager
-from .const import DOMAIN, CONF_GROUPS, CONF_POLL_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
 DEFAULT_POLL_INTERVAL = 15
 
 
-def parse_group_configs(groups_data: Dict[str, Dict]) -> Dict[str, GroupConfig]:
+def parse_group_configs(groups_data: dict[str, dict]) -> dict[str, GroupConfig]:
     """Parse structured dicts into GroupConfig objects."""
     result = {}
     for group_name, config_dict in groups_data.items():
@@ -35,24 +36,31 @@ class IntegrationManager:
         self.hass = hass
         self.entry = entry
         self._binary_sensor_async_add_entities = async_add_entities
-        self._sensor_async_add_entities: Optional[AddEntitiesCallback] = None
-        self._sensor_entities: Dict[str, Any] = {}
-        self._deadline_entities: Dict[str, Any] = {}
-        self._text_async_add_entities: Optional[AddEntitiesCallback] = None
-        self._text_entities: Dict[str, Any] = {}
-        
+        self._sensor_async_add_entities: AddEntitiesCallback | None = None
+        self._sensor_entities: dict[str, Any] = {}
+        self._deadline_entities: dict[str, Any] = {}
+        self._text_async_add_entities: AddEntitiesCallback | None = None
+        self._text_entities: dict[str, Any] = {}
+
         # Parse groups from config entry
         groups_data = entry.data.get(CONF_GROUPS, {})
         group_configs = parse_group_configs(groups_data)
-        
+
         self.auto_off = AutoOffManager(
-            hass, group_configs,
-            on_deadline_change=self._update_deadline_sensor_for_group
+            hass,
+            group_configs,
+            on_deadline_change=self._on_deadline_change,
         )
         self.door_occupancy = DoorOccupancyManager(hass, entry)
         self._lock = asyncio.Lock()
         self._remove_listener = None
-        self._groups_data: Dict[str, Dict] = dict(groups_data)
+        self._groups_data: dict[str, dict] = dict(groups_data)
+
+    def _on_deadline_change(self, group_name: str, deadline_iso: str | None) -> None:
+        deadline_entity = self._deadline_entities.get(group_name)
+        if not deadline_entity:
+            return
+        deadline_entity.update_deadline(deadline_iso)
 
     def sensor_platform_ready(self, async_add_entities: AddEntitiesCallback) -> None:
         """Called when sensor platform is ready."""
@@ -114,6 +122,9 @@ class IntegrationManager:
 
     async def async_initialize(self):
         """Initialize the integration manager."""
+        # Initialize groups (awaits unload of any old groups)
+        await self.auto_off.async_init_groups()
+
         # Initialize door_occupancy with async_add_entities
         self.door_occupancy._async_add_entities = self._binary_sensor_async_add_entities
         await self.door_occupancy._discover_and_add_sensors()
@@ -122,7 +133,7 @@ class IntegrationManager:
         self._remove_listener = async_track_time_interval(
             self.hass, self._periodic_worker, timedelta(seconds=poll_interval)
         )
-        _LOGGER.info(f"IntegrationManager initialized with poll_interval {poll_interval}s")
+        _LOGGER.info("IntegrationManager initialized with poll_interval %ds", poll_interval)
 
     async def _periodic_worker(self, now):
         """Periodic worker for checking states."""
@@ -153,7 +164,7 @@ class IntegrationManager:
             else:
                 deadline_entity.update_deadline(deadline_str)
 
-    async def set_group(self, group_name: str, config_dict: Dict, is_new: bool) -> None:
+    async def set_group(self, group_name: str, config_dict: dict, is_new: bool) -> None:
         """Create or update a group."""
         try:
             group_config = GroupConfig.model_validate(config_dict)
@@ -161,9 +172,9 @@ class IntegrationManager:
             # Update internal state
             self._groups_data[group_name] = config_dict
 
-            # Update AutoOffManager
+            # Update AutoOffManager (awaits unload of old groups)
             self.auto_off.config[group_name] = group_config
-            self.auto_off._init_groups()
+            await self.auto_off.async_init_groups()
             
             # Trigger immediate state check for new group
             if is_new:
@@ -212,7 +223,7 @@ class IntegrationManager:
             _LOGGER.exception(f"Failed to set group '{group_name}': {e}")
             raise
 
-    async def update_group_config(self, group_name: str, config_dict: Dict) -> None:
+    async def update_group_config(self, group_name: str, config_dict: dict) -> None:
         """Update group config from text entity edit."""
         await self.set_group(group_name, config_dict, is_new=False)
 

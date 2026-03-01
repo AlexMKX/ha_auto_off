@@ -1,6 +1,9 @@
 """E2E tests for auto_off integration."""
-import pytest
 import asyncio
+
+import pytest
+
+pytestmark = pytest.mark.docker_e2e
 
 
 @pytest.mark.asyncio
@@ -18,8 +21,13 @@ class TestAutoOffIntegrationE2E:
         # Add integration
         result = await ha_instance.add_integration("auto_off", {"poll_interval": 15})
 
-        assert result.get("type") == "create_entry"
-        assert result.get("title") == "Auto Off"
+        # Suite can run multiple test classes that may install the integration already.
+        if result.get("type") == "create_entry":
+            assert result.get("title") == "Auto Off"
+        elif result.get("type") == "abort":
+            assert result.get("reason") in {"already_configured", "single_instance_allowed"}
+        else:
+            raise AssertionError(f"Unexpected flow result: {result}")
 
         # Verify integration is added
         entries = await ha_instance.get_config_entries("auto_off")
@@ -38,9 +46,9 @@ class TestAutoOffIntegrationE2E:
 
         # Call set_group service
         config_yaml = """sensors:
-  - input_boolean.test_motion
+  - binary_sensor.test_motion
 targets:
-  - input_boolean.test_light
+  - light.test_light
 delay: 1
 """
         await ha_instance.call_service("auto_off", "set_group", {
@@ -70,9 +78,9 @@ delay: 1
 
         # Create a group with delay: 0 to turn off immediately when sensor is off
         config_yaml = """sensors:
-  - input_boolean.test_motion_2
+  - binary_sensor.test_motion_2
 targets:
-  - input_boolean.test_light_2
+  - light.test_light_2
 delay: 0
 """
         await ha_instance.call_service("auto_off", "set_group", {
@@ -83,39 +91,39 @@ delay: 0
 
         # First, turn ON motion sensor (to prevent immediate auto-off)
         await ha_instance.call_service("input_boolean", "turn_on", {
-            "entity_id": "input_boolean.test_motion_2",
+            "entity_id": "input_boolean.test_motion_2_state",
         })
         await asyncio.sleep(1)
 
         # Turn on the light
         await ha_instance.call_service("input_boolean", "turn_on", {
-            "entity_id": "input_boolean.test_light_2",
+            "entity_id": "input_boolean.test_light_2_state",
         })
         await asyncio.sleep(1)
 
         # Verify light is on (motion is on, so it should stay on)
-        state = await ha_instance.get_state("input_boolean.test_light_2")
+        state = await ha_instance.get_state("light.test_light_2")
         assert state["state"] == "on", f"Expected light to be on, but it's {state['state']}"
 
         # Turn off motion sensor (should trigger auto-off with delay 0)
         await ha_instance.call_service("input_boolean", "turn_off", {
-            "entity_id": "input_boolean.test_motion_2",
+            "entity_id": "input_boolean.test_motion_2_state",
         })
 
         # Wait for periodic worker to process (poll_interval + buffer)
         await asyncio.sleep(20)
 
         # Light should be off now
-        state = await ha_instance.get_state("input_boolean.test_light_2")
+        state = await ha_instance.get_state("light.test_light_2")
         assert state["state"] == "off", f"Expected light to be off, but it's {state['state']}"
 
     async def test_delete_group_service(self, ha_instance):
         """Test the delete_group service removes a group."""
         # First create a group
         config_yaml = """sensors:
-  - input_boolean.test_motion
+  - binary_sensor.test_motion
 targets:
-  - input_boolean.test_light
+  - light.test_light
 delay: 5
 """
         await ha_instance.call_service("auto_off", "set_group", {
@@ -144,9 +152,9 @@ delay: 5
         """Test updating an existing group's configuration."""
         # Create initial group
         config_yaml_v1 = """sensors:
-  - input_boolean.test_motion
+  - binary_sensor.test_motion
 targets:
-  - input_boolean.test_light
+  - light.test_light
 delay: 5
 """
         await ha_instance.call_service("auto_off", "set_group", {
@@ -157,11 +165,11 @@ delay: 5
 
         # Update the group with new config
         config_yaml_v2 = """sensors:
-  - input_boolean.test_motion
-  - input_boolean.test_motion_2
+  - binary_sensor.test_motion
+  - binary_sensor.test_motion_2
 targets:
-  - input_boolean.test_light
-  - input_boolean.test_light_2
+  - light.test_light
+  - light.test_light_2
 delay: 10
 """
         await ha_instance.call_service("auto_off", "set_group", {

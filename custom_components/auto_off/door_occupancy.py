@@ -1,13 +1,7 @@
 import logging
-import asyncio
+from collections.abc import Callable
+
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.template import Template
-from pydantic import BaseModel, field_validator, ValidationError
-from typing import List, Optional, Callable, Dict
-from homeassistant.helpers import entity_registry
-import functools
-from homeassistant.helpers.event import async_track_time_interval
-from datetime import timedelta
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -18,9 +12,9 @@ class DoorOccupancyManager:
     def __init__(self, hass: HomeAssistant, config_entry=None):
         self.hass = hass
         self.config_entry = config_entry
-        self._door_entities = []  # List of entity_id
-        self._occupancy_sensors: Dict[str, object] = {}  # entity_id -> sensor instance
-        self._async_add_entities: Optional[Callable] = None
+        self._door_entities: list[str] = []  # List of entity_id
+        self._occupancy_sensors: dict[str, object] = {}  # entity_id -> sensor instance
+        self._async_add_entities: Callable | None = None
 
     async def _find_doors(self):
         entities = set()

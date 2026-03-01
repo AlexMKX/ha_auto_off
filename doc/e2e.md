@@ -342,30 +342,27 @@ This document describes end-to-end test cases for the Auto Off Home Assistant in
 
 ### Quick Start
 ```bash
-cd tests/e2e/docker
-./run_e2e.sh
+./ha-test-kit/run_e2e.sh
 ```
 
 ### Options
+
 ```bash
-# Keep containers running after tests
-./run_e2e.sh --keep
+# Run a specific test file
+AUTOQA_TEST_PATHS="custom_components/auto_off/tests/test_e2e_playwright.py" ./ha-test-kit/run_e2e.sh
 
-# Force rebuild Docker images
-./run_e2e.sh --rebuild
-
-# Run specific test
-./run_e2e.sh --filter "test_login"
+# Add extra pytest args
+AUTOQA_PYTEST_ARGS="-vv --maxfail=1" ./ha-test-kit/run_e2e.sh
 ```
 
 ### View Results
-- HTML Report: `tests/e2e/docker/test_results/report.html`
-- Screenshots: `tests/e2e/docker/screenshots/`
+- HTML Report: `.autoqa/test_results/report.html`
+- Screenshots: `.autoqa/screenshots/`
 
 ### Manual Testing
 ```bash
 # Start stack and keep running
-./run_e2e.sh --keep
+./ha-test-kit/run_e2e.sh
 
 # Access Home Assistant
 open http://localhost:8123

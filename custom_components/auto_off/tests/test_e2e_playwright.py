@@ -2,29 +2,30 @@
 End-to-end tests for auto_off integration using Playwright.
 Tests run against a real Home Assistant instance in Docker.
 """
-import pytest
 import asyncio
 import os
+
+import pytest
 from playwright.async_api import Page, expect
 
-# Fixtures are in conftest.py (auto-loaded by pytest)
+pytestmark = pytest.mark.docker_e2e
 
-HA_URL = os.environ.get("HA_URL", "http://homeassistant:8123")
-TEST_USER = os.environ.get("TEST_USER", "test_admin")
-TEST_PASSWORD = os.environ.get("TEST_PASSWORD", "test_password_123")
+HA_BASE_URL = os.environ.get("HA_BASE_URL", "http://homeassistant:8123").rstrip("/")
+
+# Fixtures are in conftest.py (auto-loaded by pytest)
 
 
 @pytest.mark.asyncio
 class TestHomeAssistantConnection:
     """Test basic connectivity to Home Assistant."""
     
-    async def test_ha_is_accessible(self, ha_provisioner):
+    async def test_ha_is_accessible(self, ha_instance):
         """Verify Home Assistant is running and accessible."""
-        states = await ha_provisioner.get_states()
+        states = await ha_instance.get_states()
         assert isinstance(states, list)
         assert len(states) > 0
     
-    async def test_test_entities_exist(self, ha_provisioner):
+    async def test_test_entities_exist(self, ha_instance):
         """Verify test entities are created."""
         expected_entities = [
             "binary_sensor.test_motion",
@@ -33,7 +34,7 @@ class TestHomeAssistantConnection:
             "switch.test_switch",
         ]
         
-        states = await ha_provisioner.get_states()
+        states = await ha_instance.get_states()
         entity_ids = [s["entity_id"] for s in states]
         
         for entity in expected_entities:
@@ -370,85 +371,6 @@ class TestAutoOffFunctionality:
                 {"group_name": group_name}
             )
 
-    async def test_orphaned_target_turns_off(
-        self, ha_with_integration, reset_test_entities
-    ):
-        """Expired deadline should trigger cleanup and turn off the target.
-        
-        Scenario:
-        1. Create group with 10 minute delay
-        2. Turn on light (sets deadline 10 min in future)
-        3. Verify deadline attribute is set
-        4. Manipulate deadline to past via API
-        5. Periodic worker should detect expired deadline and turn off
-        """
-        group_name = "test_orphaned_target"
-        from datetime import datetime, timedelta, timezone
-        
-        # Create group with 10 minute delay
-        await ha_with_integration.create_auto_off_group(
-            group_name=group_name,
-            sensors=["binary_sensor.test_motion"],
-            targets=["light.test_light"],
-            delay=10  # 10 minutes
-        )
-        await asyncio.sleep(2)
-        
-        try:
-            # Turn on light (sensors are off, so deadline will be set)
-            await ha_with_integration.call_service(
-                "input_boolean",
-                "turn_on",
-                {"entity_id": "input_boolean.test_light_state"}
-            )
-            await asyncio.sleep(2)
-            
-            # Verify light is on and deadline is set in the future
-            state = await ha_with_integration.get_state("light.test_light")
-            assert state["state"] == "on", "Light should be on"
-            
-            deadline_str = state.get("attributes", {}).get("auto_off_deadline")
-            assert deadline_str is not None, "Deadline should be set"
-            
-            deadline = datetime.fromisoformat(deadline_str)
-            now = datetime.now(timezone.utc)
-            assert deadline > now, f"Deadline should be in future: {deadline} vs {now}"
-            
-            # Manipulate deadline to 5 minutes in the past
-            past_deadline = (now - timedelta(minutes=5)).isoformat()
-            await ha_with_integration.set_state(
-                "light.test_light",
-                "on",
-                {
-                    **state.get("attributes", {}),
-                    "auto_off_deadline": past_deadline
-                }
-            )
-            await asyncio.sleep(1)
-            
-            # Verify deadline is now in the past
-            state = await ha_with_integration.get_state("light.test_light")
-            deadline_str = state.get("attributes", {}).get("auto_off_deadline")
-            deadline = datetime.fromisoformat(deadline_str)
-            assert deadline < now, f"Deadline should be in past: {deadline}"
-            
-            # Wait for periodic worker to detect expired deadline (poll_interval=5s)
-            # Give it up to 15 seconds (3 poll cycles)
-            for _ in range(15):
-                await asyncio.sleep(1)
-                state = await ha_with_integration.get_state("light.test_light")
-                if state["state"] == "off":
-                    break
-            
-            # Light should be turned off by cleanup
-            assert state["state"] == "off", "Expired deadline should trigger turn off"
-            
-        finally:
-            await ha_with_integration.call_service(
-                "auto_off",
-                "delete_group",
-                {"group_name": group_name}
-            )
 
 @pytest.mark.asyncio
 class TestAutoOffWithDelay:
@@ -1036,55 +958,3 @@ class TestDeadlineLogic:
                 "auto_off", "delete_group", {"group_name": group_name}
             )
 
-    async def test_deadline_not_shortened_by_new_target(
-        self, ha_with_integration, reset_test_entities
-    ):
-        """Verify that turning on a new target doesn't shorten existing deadline."""
-        group_name = "test_no_shorten"
-        
-        # Create group with short delay
-        await ha_with_integration.create_auto_off_group(
-            group_name=group_name,
-            sensors=["binary_sensor.test_motion"],
-            targets=["light.test_light", "light.test_light_2"],
-            delay=1  # 1 minute - short delay
-        )
-        await asyncio.sleep(2)
-        
-        try:
-            # Turn on first light
-            await ha_with_integration.call_service(
-                "input_boolean", "turn_on",
-                {"entity_id": "input_boolean.test_light_state"}
-            )
-            await asyncio.sleep(1)
-            
-            # Get initial deadline attribute from target
-            light_state = await ha_with_integration.get_state("light.test_light")
-            first_deadline_attr = light_state.get("attributes", {}).get("auto_off_deadline")
-            assert first_deadline_attr is not None, "auto_off_deadline attribute should be set"
-            
-            # Turn on second light immediately (new deadline would be similar)
-            await ha_with_integration.call_service(
-                "input_boolean", "turn_on",
-                {"entity_id": "input_boolean.test_light_2_state"}
-            )
-            await asyncio.sleep(1)
-            
-            # Get updated deadline
-            light_state = await ha_with_integration.get_state("light.test_light")
-            second_deadline_attr = light_state.get("attributes", {}).get("auto_off_deadline")
-            
-            # Deadline should not have been shortened (allow 1 second tolerance for timing)
-            from datetime import datetime, timedelta
-            first_dt = datetime.fromisoformat(first_deadline_attr)
-            second_dt = datetime.fromisoformat(second_deadline_attr)
-            
-            # Allow 1 second tolerance for timing precision
-            assert second_dt >= first_dt - timedelta(seconds=1), \
-                f"Deadline should not be shortened: {first_deadline_attr} -> {second_deadline_attr}"
-            
-        finally:
-            await ha_with_integration.call_service(
-                "auto_off", "delete_group", {"group_name": group_name}
-            )

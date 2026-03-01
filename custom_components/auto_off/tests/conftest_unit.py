@@ -6,8 +6,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 
 
-# Configure pytest-asyncio
-pytest_plugins = ('pytest_asyncio',)
+collect_ignore = [
+    "test_e2e_playwright.py",
+    "test_integration_e2e.py",
+]
 
 
 @pytest.fixture(scope="session")

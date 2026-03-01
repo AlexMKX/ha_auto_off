@@ -1,23 +1,20 @@
-import logging
-from typing import Any, Dict, List, Optional, Union, Callable
-from homeassistant.core import HomeAssistant, State, Event
-from homeassistant.helpers.template import Template
 import asyncio
-from pydantic import BaseModel, field_validator, ValidationError, model_validator
 import datetime
-from homeassistant.helpers.event import async_track_time_interval, async_track_state_change_event, async_track_template
-from datetime import timedelta
-import functools
+import logging
+from typing import Any
+from collections.abc import Callable
 
-_LOGGER = logging.getLogger(__name__)
+from homeassistant.core import HomeAssistant, State
+from homeassistant.helpers.event import async_track_state_change_event, async_track_template
+from homeassistant.helpers.template import Template
+from pydantic import BaseModel, field_validator
 
-#todo: it constantly resets the deadline in production, and gets into a loop because deadline is an attribute.
-#todo: add logging - with event data. 
+_LOGGER = logging.getLogger(__name__) 
 
 class GroupConfig(BaseModel):
-    sensors: List[str]
-    targets: List[str]  # Changed from Union[str, dict] to str
-    delay: Union[int, str, None] = 0
+    sensors: list[str]
+    targets: list[str]
+    delay: int | str | None = 0
 
     @field_validator('delay')
     @classmethod
@@ -28,12 +25,12 @@ class GroupConfig(BaseModel):
 
 
 class AutoOffConfig(BaseModel):
-    groups: Dict[str, GroupConfig]
+    groups: dict[str, GroupConfig]
 
 class IntegrationConfig(BaseModel):
     poll_interval: int = 15
-    doors: Optional[dict] = None
-    groups: Dict[str,GroupConfig]
+    doors: dict | None = None
+    groups: dict[str, GroupConfig]
 
 
 class Sensor:
@@ -43,7 +40,7 @@ class Sensor:
         self._on_change_callback = on_state_change_callback
         self._unsub = None
         self._is_template = self._detect_template()
-        self._last_known_good_state: Optional[bool] = None  # Last valid state
+        self._last_known_good_state: bool | None = None  # Last valid state
 
     def _detect_template(self) -> bool:
         """Determines if sensor_def is a template"""
@@ -193,7 +190,7 @@ class Sensor:
         _LOGGER.info(f"Sensor entity '{entity_id}' state not found")
         return False
 
-    def get_entity_id(self) -> Optional[str]:
+    def get_entity_id(self) -> str | None:
         """Returns entity_id if sensor_def is an entity, not a template"""
         if not self._is_template and isinstance(self.raw, str):
             return self.raw
@@ -212,24 +209,23 @@ class Target:
         self.hass = hass
         self.raw = target_def  # Can store either entity_id or template
         self._on_change_callback = on_state_change_callback
-        self._unsub_list = []  # List of subscriptions for multiple entity_ids
-        self._deadline = None
-        self._last_known_good_state: Optional[bool] = None  # Last valid state
+        self._unsub_list: list = []  # List of subscriptions for multiple entity_ids
+        self._last_known_good_state: bool | None = None  # Last valid state
         self._is_template = self._detect_template()
-        self._current_entity_ids: List[str] = []  # Current list of entity_ids
+        self._current_entity_ids: list[str] = []  # Current list of entity_ids
 
     def _detect_template(self) -> bool:
         """Determines if target_def is a template"""
         return isinstance(self.raw, str) and '{{' in self.raw and '}}' in self.raw
 
-    async def _get_entity_ids(self) -> List[str]:
+    async def _get_entity_ids(self) -> list[str]:
         """Gets list of entity_ids from template or returns single entity_id"""
         if self._is_template:
             return await self._render_template_entities()
         else:
             return [self.raw] if self.raw else []
 
-    async def _render_template_entities(self) -> List[str]:
+    async def _render_template_entities(self) -> list[str]:
         """Renders template and returns list of entity_ids"""
         try:
             tpl = Template(str(self.raw), self.hass)
@@ -333,83 +329,6 @@ class Target:
         
         return False
 
-    def set_deadline(self, deadline_timestamp: Optional[float]):
-        """Updates deadline attribute for all entity_ids"""
-        for entity_id in self._current_entity_ids:
-            state = self.hass.states.get(entity_id)
-            if state is None:
-                continue
-                
-            current_deadline = state.attributes.get("auto_off_deadline")
-            is_on = state.state == "on"
-            
-            if is_on and deadline_timestamp is not None:
-                # Calculate real deadline time
-                now_real = datetime.datetime.now().astimezone()
-                now_monotonic = self.hass.loop.time()
-                seconds_until_deadline = deadline_timestamp - now_monotonic
-                real_deadline = now_real + datetime.timedelta(seconds=seconds_until_deadline)
-                new_deadline = real_deadline.isoformat()
-                
-                # Update only if deadline actually changed
-                if current_deadline != new_deadline:
-                    attrs = dict(state.attributes)
-                    attrs["auto_off_deadline"] = new_deadline
-                    self.hass.states.async_set(entity_id, state.state, attrs)
-                    _LOGGER.debug(f"Target entity {entity_id} deadline updated: {new_deadline}")
-            elif not is_on and current_deadline is not None:
-                # Reset attribute to None only if it's currently not None
-                attrs = dict(state.attributes)
-                attrs["auto_off_deadline"] = None
-                self.hass.states.async_set(entity_id, state.state, attrs)
-                _LOGGER.debug(f"Target entity {entity_id} deadline cleared")
-
-    def get_existing_deadline(self) -> Optional[datetime.datetime]:
-        """Reads existing deadline from attributes of first ON entity"""
-        for entity_id in self._current_entity_ids:
-            state = self.hass.states.get(entity_id)
-            if state is None or state.state not in ("on",):
-                continue
-            
-            deadline_str = state.attributes.get("auto_off_deadline")
-            if deadline_str:
-                try:
-                    return datetime.datetime.fromisoformat(deadline_str)
-                except (ValueError, TypeError) as e:
-                    _LOGGER.warning(f"Invalid deadline format in {entity_id}: {deadline_str}, error: {e}")
-        return None
-
-    async def turn_off_expired(self) -> bool:
-        """
-        Checks each entity for expired deadline and turns it off.
-        Returns True if at least one entity was turned off.
-        Used for cases when turn_off command didn't reach device (zigbee etc.)
-        """
-        now_real = datetime.datetime.now().astimezone()
-        turned_off_any = False
-        
-        for entity_id in self._current_entity_ids:
-            state = self.hass.states.get(entity_id)
-            if state is None or state.state not in ("on",):
-                continue
-            
-            deadline_str = state.attributes.get("auto_off_deadline")
-            if not deadline_str:
-                continue
-            
-            try:
-                deadline = datetime.datetime.fromisoformat(deadline_str)
-                if deadline <= now_real:
-                    # Deadline expired, entity still ON -> turn off
-                    domain = entity_id.split(".")[0]
-                    await self.hass.services.async_call(domain, "turn_off", {"entity_id": entity_id}, blocking=True)
-                    _LOGGER.warning(f"Entity {entity_id} still ON after expired deadline {deadline_str}, turning off again")
-                    turned_off_any = True
-            except (ValueError, TypeError) as e:
-                _LOGGER.warning(f"Invalid deadline format in {entity_id}: {deadline_str}, error: {e}")
-        
-        return turned_off_any
-
     async def turn_off(self):
         """Turns off all entity_ids"""
         tasks = []
@@ -445,22 +364,26 @@ class Target:
 
 
 class SensorGroup:
-    def __init__(self, hass: HomeAssistant, group_id: str, config: GroupConfig, 
-                 on_deadline_change: Optional[Callable[[str], None]] = None):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        group_id: str,
+        config: GroupConfig,
+        on_deadline_change: Callable[[str, str | None], None] | None = None,
+    ):
         self.hass = hass
         self.group_id = group_id
         self._config = config  # immutable
-        self._sensors: List[Sensor] = []
-        self._targets: List[Target] = []
-        self._timer: Optional[asyncio.TimerHandle] = None
-        self._timer_deadline: Optional[float] = None  # timestamp when timer fires
-        self._last_all_sensors_off: Optional[bool] = None
+        self._on_deadline_change = on_deadline_change
+        self._sensors: list[Sensor] = []
+        self._targets: list[Target] = []
+        self._timer: asyncio.TimerHandle | None = None
+        self._timer_deadline: float | None = None  # timestamp when timer fires
+        self._last_all_sensors_off: bool | None = None
         # Critical section for race condition protection
         self._lock = asyncio.Lock()
         # Tracking previous states for transition detection
-        self._last_any_target_on: Optional[bool] = None
-        # Callback when deadline changes (for updating sensor entity)
-        self._on_deadline_change = on_deadline_change
+        self._last_any_target_on: bool | None = None
         self._init_from_config()
 
     def _init_from_config(self):
@@ -517,26 +440,18 @@ class SensorGroup:
             
             # First run initialization
             if self._is_first_run():
-                await self._handle_first_run(current_state)
+                self._handle_first_run(current_state)
                 return
             
             # Log state transitions
             await self._log_state_transitions(current_state)
             
-            # Make deadline decisions first
+            # Make deadline decisions
             await self._handle_deadline_logic(current_state)
-            
-            # Check for expired deadlines AFTER deadline logic
-            # Only when target is on, sensors are off, and we have a deadline
-            # This handles the case when turn_off command didn't reach device
-            if current_state['target_on'] and current_state['all_sensors_off'] and self._timer_deadline is not None:
-                await self._turn_off_expired_targets()
             
             # Save current state as previous
             self._update_last_states(current_state)
             
-            # Update deadlines for all targets
-            self._update_targets_deadline()
 
     async def _collect_current_state(self) -> dict:
         """Collects current state of sensors and targets"""
@@ -560,16 +475,32 @@ class SensorGroup:
         real_deadline = now_real + datetime.timedelta(seconds=seconds_until_deadline)
         return real_deadline.isoformat()
 
+    def _notify_deadline_change(self) -> None:
+        if not self._on_deadline_change:
+            return
+        deadline_iso: str | None
+        if self._timer_deadline is None:
+            deadline_iso = None
+        else:
+            human = self._get_human_deadline()
+            deadline_iso = None if human == "None" else human
+        try:
+            self._on_deadline_change(self.group_id, deadline_iso)
+        except Exception as exc:
+            _LOGGER.debug(
+                "Failed to notify deadline change for group %s: %s", self.group_id, exc
+            )
+
     def _log_current_state(self, state: dict):
         """Logs current group state"""
         _LOGGER.debug(f"[Checking Group {self.group_id}] target_on={state['target_on']}, "
-                    f"all_sensors_off={state['all_sensors_off']}, deadline={state['human_deadline']}")
+                     f"all_sensors_off={state['all_sensors_off']}, deadline={state['human_deadline']}")
 
     def _is_first_run(self) -> bool:
         """Checks if this is the first run"""
         return self._last_all_sensors_off is None or self._last_any_target_on is None
 
-    async def _handle_first_run(self, state: dict):
+    def _handle_first_run(self, state: dict):
         """Handles first system run"""
         _LOGGER.info(f"[Group {self.group_id}] First run initialization")
         self._last_all_sensors_off = state['all_sensors_off']
@@ -578,10 +509,10 @@ class SensorGroup:
         # At startup just set deadline if needed
         # Expired deadlines check will be in periodic worker
         if state['target_on'] and state['all_sensors_off'] and self._timer_deadline is None:
-            await self._set_deadline_from_delay("startup")
+            asyncio.create_task(self._set_deadline_from_delay("startup"))
 
     async def _set_deadline_from_delay(self, reason: str):
-        """Sets deadline based on delay from config (always replaces current deadline)"""
+        """Sets deadline based on delay from config"""
         delay = await self.get_delay()
         now = self.hass.loop.time()
         new_deadline = now + delay
@@ -590,36 +521,6 @@ class SensorGroup:
         now_real = datetime.datetime.now().astimezone()
         human_deadline = (now_real + datetime.timedelta(seconds=delay)).isoformat()
         _LOGGER.info(f"[Group {self.group_id}] Deadline set by {reason}: {delay}s | New deadline: {new_deadline} ({human_deadline})")
-
-    async def _extend_deadline_if_later(self, reason: str):
-        """Extends deadline only if new deadline would be later than current one.
-        
-        Used when a target turns on while a deadline already exists.
-        This prevents shortening the deadline when a new target activates.
-        """
-        delay = await self.get_delay()
-        now = self.hass.loop.time()
-        new_deadline = now + delay
-        
-        # If no deadline exists, set it
-        if self._timer_deadline is None:
-            self._start_deadline(force_deadline=new_deadline)
-            now_real = datetime.datetime.now().astimezone()
-            human_deadline = (now_real + datetime.timedelta(seconds=delay)).isoformat()
-            _LOGGER.info(f"[Group {self.group_id}] Deadline set by {reason}: {delay}s | New deadline: {new_deadline} ({human_deadline})")
-            return
-        
-        # Only extend if new deadline is later than current
-        if new_deadline > self._timer_deadline:
-            old_deadline = self._timer_deadline
-            self._start_deadline(force_deadline=new_deadline)
-            now_real = datetime.datetime.now().astimezone()
-            human_deadline = (now_real + datetime.timedelta(seconds=delay)).isoformat()
-            _LOGGER.info(f"[Group {self.group_id}] Deadline extended by {reason}: {delay}s | "
-                        f"Old: {old_deadline} -> New: {new_deadline} ({human_deadline})")
-        else:
-            _LOGGER.debug(f"[Group {self.group_id}] Deadline NOT extended by {reason}: "
-                         f"new ({new_deadline}) <= current ({self._timer_deadline})")
 
     async def _log_state_transitions(self, state: dict):
         """Logs detailed information about state transitions"""
@@ -652,8 +553,8 @@ class SensorGroup:
 
         _LOGGER.debug(f"[Group {self.group_id}] Sensors: {sensor_statuses} | Targets: {target_statuses}")
         _LOGGER.debug(f"[Group {self.group_id}] State transition: "
-                    f"last_all_sensors_off={self._last_all_sensors_off} -> all_sensors_off={state['all_sensors_off']}, "
-                    f"last_any_target_on={self._last_any_target_on} -> any_target_on={state['target_on']}")
+                     f"last_all_sensors_off={self._last_all_sensors_off} -> all_sensors_off={state['all_sensors_off']}, "
+                     f"last_any_target_on={self._last_any_target_on} -> any_target_on={state['target_on']}")
 
     async def _handle_deadline_logic(self, state: dict):
         """Main deadline decision logic"""
@@ -666,54 +567,24 @@ class SensorGroup:
         # Target is on - analyze state transitions
         transitions = self._analyze_state_transitions(state)
         
-        # CRITICAL: If any sensor is ON, there should be NO deadline
-        # Deadline only exists when ALL sensors are OFF
-        if not state['all_sensors_off']:
-            # Sensors are ON - clear any existing deadline
-            if self._cancel_deadline():
-                _LOGGER.info(f"[Group {self.group_id}] Deadline cancelled: sensors are on")
-            return
-        
-        # From here: target is ON and ALL sensors are OFF
-        # This is the only case when deadline should exist
-        
-        if transitions['sensors_turned_off']:
-            # Sensors just turned off while target is on -> always set new deadline
+        if transitions['target_turned_on'] and state['all_sensors_off']:
+            await self._set_deadline_from_delay("target turning ON")
+        elif transitions['sensors_turned_off'] and state['target_on']:
             await self._set_deadline_from_delay("sensors turning OFF")
-        elif transitions['target_turned_on']:
-            # Target just turned on while sensors are off
-            # Only extend deadline if new would be later than current
-            await self._extend_deadline_if_later("target turning ON while sensors off")
-        elif self._timer is None:
-            # Timer lost (e.g. after restart) - check expired deadlines or set new
+        elif transitions['sensors_turned_on']:
+            if self._cancel_deadline():
+                _LOGGER.info(f"[Group {self.group_id}] Deadline cancelled: sensor turned on")
+        elif state['target_on'] and state['all_sensors_off'] and self._timer is None:
+            # Timer lost (e.g. after restart) - check expired deadlines
             await self._check_expired_deadlines()
-
-    async def _turn_off_expired_targets(self):
-        """
-        Checks all targets for expired deadline attributes and turns them off.
-        Called on every periodic check when target is on and sensors are off.
-        This handles the case when turn_off command didn't reach device (zigbee etc.)
-        """
-        for target in self._targets:
-            await target.turn_off_expired()
 
     async def _check_expired_deadlines(self):
         """
-        Checks expired deadlines from target attributes and turns them off.
-        Called periodically when target is on, sensors are off, but no timer.
-        Solves two problems:
-        1. Timer lost after HA restart
-        2. Turn_off command didn't reach device (zigbee etc.)
+        Called when target is on, sensors are off, but no timer exists.
+        After HA restart timers are lost — recalculate deadline from delay.
         """
-        turned_off_any = False
-        for target in self._targets:
-            if await target.turn_off_expired():
-                turned_off_any = True
-        
-        if not turned_off_any:
-            # Didn't turn off anyone, but no timer - set new deadline
-            _LOGGER.debug(f"[Group {self.group_id}] No expired deadlines found, setting new deadline")
-            await self._set_deadline_from_delay("no timer and no expired deadlines")
+        _LOGGER.debug("[Group %s] No active timer, setting new deadline", self.group_id)
+        await self._set_deadline_from_delay("no timer (recalculated)")
 
     def _analyze_state_transitions(self, state: dict) -> dict:
         """Analyzes state transitions"""
@@ -728,19 +599,6 @@ class SensorGroup:
         self._last_all_sensors_off = state['all_sensors_off']
         self._last_any_target_on = state['target_on']
 
-    def _update_targets_deadline(self):
-        """
-        Updates deadlines for all targets in the group.
-        Each target decides itself whether to update its auto_off_deadline attribute.
-        """
-        for target in self._targets:
-            target.set_deadline(self._timer_deadline)
-
-    def _notify_deadline_change(self):
-        """Notify callback that deadline has changed."""
-        if self._on_deadline_change:
-            self._on_deadline_change(self.group_id)
-
     def _start_deadline(self, force_deadline=None):
         # This method is only called from check_and_set_deadline, which is already under lock
         if self._cancel_deadline():
@@ -754,11 +612,12 @@ class SensorGroup:
             self._timer = loop.call_later(delay, lambda: asyncio.create_task(self._turn_off_targets()))
             self._timer_deadline = loop.time() + delay
             _LOGGER.info(f"[{self.group_id}] All sensors are off/false. Deadline delay started.")
-            self._notify_deadline_change()
         else:
             asyncio.create_task(self._turn_off_targets())
             self._timer_deadline = None
             _LOGGER.info(f"[{self.group_id}] All sensors are off/false. Turning off targets immediately.")
+
+        self._notify_deadline_change()
 
     def _cancel_deadline(self) -> bool:
         # This method is only called from check_and_set_deadline, which is already under lock
@@ -766,9 +625,8 @@ class SensorGroup:
         if self._timer:
             self._timer.cancel()
             self._timer = None
-        self._timer_deadline = None  # Always clear deadline when canceling
-        if had_timer:
-            self._notify_deadline_change()
+        self._timer_deadline = None  # Always clear deadline when cancelling
+        self._notify_deadline_change()
         return had_timer
 
     async def _turn_off_targets(self):
@@ -793,14 +651,14 @@ class SensorGroup:
             # Sensors unsubscribe from their own events
             for sensor in self._sensors:
                 await sensor.stop_tracking()
-            
+
             # Targets unsubscribe from their own events
             for target in self._targets:
                 await target.stop_tracking()
-            
+
             _LOGGER.info(f"[Group {self.group_id}] Unloaded successfully")
 
-    async def _on_target_state_change(self, target: Target, old_state: Optional[bool], new_state: Optional[bool]):
+    async def _on_target_state_change(self, target: Target, old_state: bool | None, new_state: bool | None):
         """Handler for target state changes, passed to Target"""
         # This method is called from Target._handle_my_changes
         # It is only called when a REAL state change occurs for target
@@ -808,7 +666,7 @@ class SensorGroup:
         _LOGGER.debug(f"Target {getattr(target, 'entity_id', 'unknown')} state change: {old_state} -> {new_state}")
         await self.check_and_set_deadline()
 
-    async def _on_sensor_state_change(self, sensor: Sensor, old_state: Optional[bool], new_state: Optional[bool]):
+    async def _on_sensor_state_change(self, sensor: Sensor, old_state: bool | None, new_state: bool | None):
         """Handler for sensor state changes, passed to Sensor"""
         # This method is called from Sensor._handle_entity_change or Sensor._handle_template_change
         # It is only called when a REAL state change occurs for sensor
@@ -822,38 +680,44 @@ class AutoOffManager:
     Manager for automatic device turn-off by events and timeout.
     """
 
-    def __init__(self, hass: HomeAssistant, config: Dict[str, GroupConfig],
-                 on_deadline_change: Optional[Callable[[str], None]] = None) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        config: dict[str, GroupConfig],
+        *,
+        on_deadline_change: Callable[[str, str | None], None] | None = None,
+    ) -> None:
         self.hass = hass
         self.config = config
-        self._targets_state: Dict[str, Dict[str, Any]] = {}
-        self._groups: Dict[str, SensorGroup] = {}
-        self._tasks: List[Any] = []
         self._on_deadline_change = on_deadline_change
-        self._init_groups()
+        self._targets_state: dict[str, dict[str, Any]] = {}
+        self._groups: dict[str, SensorGroup] = {}
+        self._tasks: list[Any] = []
 
-    def _init_groups(self):
-        """Initialize sensor groups from configuration."""
-        # Clear existing groups
+    async def async_init_groups(self):
+        """Initialize sensor groups from configuration. Awaits unload of old groups."""
         for group in self._groups.values():
             try:
-                asyncio.create_task(group.async_unload())
+                await group.async_unload()
             except Exception as e:
-                _LOGGER.error(f"Error unloading group: {e}")
-        
+                _LOGGER.error("Error unloading group: %s", e)
+
         self._groups.clear()
         for group_id, group_config in self.config.items():
             try:
                 self._groups[group_id] = SensorGroup(
-                    self.hass, group_id, group_config,
-                    on_deadline_change=self._on_deadline_change
+                    self.hass,
+                    group_id,
+                    group_config,
+                    on_deadline_change=self._on_deadline_change,
                 )
-                _LOGGER.info(f"Initialized auto-off group '{group_id}' with {len(group_config.sensors)} sensors and {len(group_config.targets)} targets")
+                _LOGGER.info("Initialized auto-off group '%s' with %d sensors and %d targets",
+                             group_id, len(group_config.sensors), len(group_config.targets))
             except Exception as e:
-                _LOGGER.error(f"Failed to initialize auto-off group '{group_id}': {e}")
+                _LOGGER.error("Failed to initialize auto-off group '%s': %s", group_id, e)
 
     async def periodic_worker(self):
-        _LOGGER.debug(f"Periodic worker started.")
+        _LOGGER.debug("Periodic worker tick.")
         try:
             for group in self._groups.values():
                 # Check states and set deadlines
@@ -861,11 +725,11 @@ class AutoOffManager:
         except Exception as e:
             _LOGGER.error(f"Scheduled config reload failed: {e}")
 
-    def update_config(self, new_config: Dict[str, GroupConfig]):
+    async def async_update_config(self, new_config: dict[str, GroupConfig]):
         """Update configuration and reinitialize groups."""
         self.config = new_config
-        self._init_groups()
-        _LOGGER.info(f"AutoOffManager configuration updated with {len(new_config)} groups")
+        await self.async_init_groups()
+        _LOGGER.info("AutoOffManager configuration updated with %d groups", len(new_config))
 
     async def async_unload(self):
         """Clean up resources."""
