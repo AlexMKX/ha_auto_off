@@ -69,7 +69,7 @@ custom_components/
     translations/
     icon.svg
     auto_off.py          # GroupConfig, Sensor, Target, SensorGroup, AutoOffManager
-    sensor.py            # GroupConfigSensorEntity, DeadlineSensorEntity
+    sensor.py            # DeadlineSensorEntity
     text.py              # DelayTextEntity
     integration_manager.py  # IntegrationManager, now only auto_off concerns
     tests/               # unit + integration tests for auto_off only
@@ -236,6 +236,16 @@ implementation).
   creating the `IntegrationManager` directly. The global `default_manager`
   hack and the "initialize-from-binary_sensor-platform" indirection are removed.
 
+### Remove `GroupConfigSensorEntity`
+
+The "config summary" sensor per group is removed. It is a pure UI mirror of
+static configuration — once `set_group` is the documented management surface,
+this entity adds no behavior and costs one extra platform registration per
+group. Each group's device keeps `DeadlineSensorEntity` (live deadline) and
+`DelayTextEntity` (editable delay). `IntegrationManager` loses
+`_sensor_entities` / `sensor_platform_ready` responsibilities for config
+sensors (deadline entities remain, using the same `sensor` platform).
+
 ## `door_occupancy` changes
 
 ### `const.py`
@@ -362,6 +372,7 @@ This is a breaking release.
    Devices & services → Auto Off → Delete). Entities created by it
    (`sensor.auto_off_*_config`, `sensor.auto_off_*_deadline`,
    `text.*_delay_minutes`, `binary_sensor.*_occupancy`) will be removed.
+   The new Auto Off does not recreate the `*_config` sensor.
 2. Update the HACS custom repository. After restart, install both integrations
    via Settings → Devices & services → Add integration:
    - `Auto Off` — same flow as before (poll interval), plus recreate groups
@@ -419,6 +430,7 @@ the code they exercise.
   - Remove any assertions on the old `config` string format.
 - `test_integration_manager.py` (update):
   - Delete door_occupancy expectations.
+  - Delete assertions that require `GroupConfigSensorEntity` creation.
   - Keep group lifecycle tests (create, update, delete).
 - `test_text_entity.py`: unchanged.
 - `test_migration.py` (new):
@@ -451,6 +463,9 @@ the code they exercise.
 
 - Adjust the e2e harness fixtures to register both integrations.
 - Update e2e scenarios using old `config:` service payload to the new fields.
+- Update e2e scenarios that assert on `sensor.auto_off_*_config`
+  (`test_e2e_playwright.py` delay-persistence / update scenarios) to use
+  `text.auto_off_*_delay_minutes` and `sensor.auto_off_*_deadline` instead.
 - Verify a door state change produces an occupancy pulse end-to-end.
 
 All tests should assert **behavior** (state transitions, emitted events, side
@@ -461,7 +476,9 @@ effects), not existence of methods or fields, per
 
 - Top-level `README.md`: split into two primary sections (`Auto Off`,
   `Door Occupancy`), add `Migration from 2512.x` section with the steps above
-  and the old-vs-new service example.
+  and the old-vs-new service example. Update the "Entities created for a
+  group" subsection: only `Deadline` sensor and `Delay` text remain; the
+  `Config` sensor is removed (managed entirely through services now).
 - `custom_components/auto_off/README.md` (new, short): purpose + link to
   top-level README.
 - `custom_components/door_occupancy/README.md` (new, short): purpose + link.
@@ -490,6 +507,9 @@ effects), not existence of methods or fields, per
    - Delete `binary_sensor.py` (remove from `PLATFORMS`).
    - Remove door occupancy wiring from `integration_manager.py`.
    - Remove `pyyaml` from `manifest.json`.
+   - Remove `GroupConfigSensorEntity` class and all references to it
+     (`sensor_platform_ready`/`_sensor_entities` bookkeeping in
+     `integration_manager.py`; any tests asserting on it).
 3. Replace the `set_group` service schema and handler in
    `auto_off/__init__.py`; update `services.yaml` and `strings.json`.
 4. Update `GroupConfig` and `Sensor.__init__` for explicit `kind`; adjust
