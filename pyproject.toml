@@ -1,0 +1,12 @@
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+pythonpath = ["."]
+testpaths = ["custom_components", "tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+  "e2e: marks tests as end-to-end tests (require running HA instance)",
+  "docker_e2e: marks tests requiring a real HA instance in Docker (ha-test-kit)",
+]
