@@ -1,99 +1,76 @@
-# Auto Off (Home Assistant custom integration)
+# Auto Off + Door Occupancy (Home Assistant custom integrations)
 
-This integration solves two practical problems:
+This repository ships two independent custom integrations:
 
-- **Auto Off**: automatically turns off selected devices (lights/switches/etc) after a configured delay when the “activity” sensor group becomes inactive.
-- **Door Occupancy**: automatically creates an `occupancy` `binary_sensor` for doors/locks/covers, producing a short “activity pulse” on every state change.
+- **Auto Off** — turns off selected entities after a configurable inactivity
+  delay when a group of activity sensors goes off. See
+  [custom_components/auto_off/README.md](custom_components/auto_off/README.md).
+- **Door Occupancy** — auto-discovers doors, locks, and covers, and creates
+  `binary_sensor.*_occupancy` entities that pulse on every real state change.
+  See [custom_components/door_occupancy/README.md](custom_components/door_occupancy/README.md).
 
-## Rationale
-
-- **[Auto-off without automation spaghetti]** Instead of many repetitive automations, you define groups once: “activity present → never turn off”, “no activity → start timer and turn off”.
-- **[Timer transparency]** For each target entity, the integration sets an `auto_off_deadline` attribute with the real (wall-clock) planned turn-off time.
-- **[Standardized door events]** Door/lock/cover state changes are often used as “someone came/left” triggers. This provides a ready-to-use occupancy pulse sensor.
+The two integrations are fully independent: they have separate domains,
+config flows, services, and config entries. Install whichever ones you need.
 
 ## Installation
 
-- **HACS**: add this repo as a Custom Repository (Integration), install it, then restart Home Assistant.
-- **Manual**: copy `custom_components/auto_off` into `<config>/custom_components/auto_off`, then restart Home Assistant.
+- **HACS**: add this repo as a Custom Repository (Integration), install it,
+  then restart Home Assistant. Both integrations become available under
+  Settings → Devices & services → Add integration.
+- **Manual**: copy `custom_components/auto_off/` and/or
+  `custom_components/door_occupancy/` into `<config>/custom_components/`,
+  then restart Home Assistant.
 
-## Initial setup
+## Migration from the unified 2512.x release
 
-1. `Settings` → `Devices & services` → `Add integration` → `Auto Off`.
-2. Set `poll_interval` (seconds). It is used for periodic worker ticks/discovery (for both `auto_off` and `door_occupancy`).
+Starting with the next release, the previous unified `auto_off` integration
+is split. This is a **breaking change**. To upgrade:
 
-Notes:
+1. Home Assistant → Settings → Devices & services → Auto Off → **Delete**.
+   Existing entities from the old integration are removed:
+   - `sensor.auto_off_*_deadline`, `text.auto_off_*_delay_minutes`
+   - `sensor.auto_off_*_config` (no longer exists in the new version)
+   - `binary_sensor.*_occupancy` (now owned by Door Occupancy)
+2. Update the HACS repository. After HA restarts, add the integrations
+   separately:
+   - Settings → Devices & services → Add integration → **Auto Off**.
+     Configure `poll_interval`, then recreate groups via the
+     `auto_off.set_group` service (see below for the new payload).
+   - Settings → Devices & services → Add integration → **Door Occupancy**.
+     Configure `poll_interval` and `occupancy_timeout`. Occupancy sensors
+     are created automatically on the first discovery tick.
+3. Update any script or automation that called `auto_off.set_group` with
+   a YAML string to the new structured shape:
 
-- The integration is designed as a **single instance**.
-- YAML is supported as a legacy import path, but the current recommended approach is UI + services.
+   ```yaml
+   # before
+   service: auto_off.set_group
+   data:
+     group_name: kitchen
+     config: |
+       sensors:
+         - binary_sensor.motion_kitchen
+       targets:
+         - light.kitchen
+       delay: 5
 
-## Usage: Auto Off (groups)
+   # after
+   service: auto_off.set_group
+   data:
+     group_name: kitchen
+     targets:
+       - light.kitchen
+     sensors:
+       - binary_sensor.motion_kitchen
+     delay: 5
+   ```
 
-At the moment, groups are created/updated via services.
+   If you previously embedded Jinja templates in the sensor list (detected
+   by the presence of `{{`), move those into the new `sensor_templates`
+   field.
 
-- **Create/update a group**: service `auto_off.set_group`
-  - `group_name` (string)
-  - `sensors` (list of `entity_id`) — activity sensors
-  - `targets` (list of `entity_id`) — entities to turn off
-  - `delay` (int or template string) — delay **in minutes**
-
-- **Delete a group**: service `auto_off.delete_group` (`group_name`)
-
-Example call for `auto_off.set_group` (Developer Tools → Services):
-
-```yaml
-group_name: kitchen
-sensors:
-  - binary_sensor.motion_kitchen
-targets:
-  - light.kitchen
-delay: 5
-```
-
-### Entities created for a group
-
-For each group, a dedicated device `Auto Off: <group_name>` is created, with these entities:
-
-- **[Config]** `sensor` — short summary (number of sensors/targets and delay)
-- **[Deadline]** `sensor` — current deadline (human-readable) + `deadline_iso` attribute
-- **[Delay (minutes)]** `text` — edit `delay` from UI (can remain a template)
-
-### `auto_off_deadline` attribute on targets
-
-When a group has an active deadline and a target is `on`, the integration sets/updates:
-
-- `auto_off_deadline`: ISO 8601 timestamp (timezone-aware)
-
-If a target is off, or there is no deadline, the attribute is cleared (`None`).
-
-## Key principles: Auto Off
-
-- **[Sensor group = OR]** The group is considered active if **at least one** sensor is `on/true`. It is inactive only if **all** sensors are `off/false`.
-- **[Deadline exists only in one state]** A deadline is allowed only when:
-  - targets are on (at least one is `on`)
-  - and all sensors are off
-- **[Activity cancels the deadline]** Any activity (any sensor becomes `on`) cancels the deadline.
-- **[Delay is in minutes]** `delay` is configured in minutes (number or a Jinja template that must render to minutes). Internally it is converted to seconds.
-- **[Deadline extension on target on]** If sensors are off, a deadline already exists, and a target turns on, the deadline is extended only if the new deadline would be later (never shortened).
-- **[Recovery based on attributes]** If the timer is lost (e.g., after restart) or a `turn_off` call didn’t reach the device, the integration periodically checks `auto_off_deadline` and retries turning off overdue entities.
-
-## Usage: Door Occupancy
-
-The integration automatically discovers and creates occupancy sensors for:
-
-- `binary_sensor.*` with `device_class: door`
-- all `lock.*`
-- all `cover.*`
-
-For each discovered entity, it creates `binary_sensor` “`<source_entity_id> Occupancy`”.
-
-## Key principles: Door Occupancy
-
-- **[Activity pulse]** On each real state change of the source entity, the occupancy sensor turns `on` and stays on for **15 seconds**, then turns off.
-- **[Timer restart on new events]** New events restart the timer.
-- **[Device binding]** The occupancy sensor is bound to the same HA device as the source door/lock/cover.
-- **[Auto-discovery]** New doors/locks/covers are picked up periodically with `poll_interval`.
-
-## Configuration
-
-- `poll_interval` (**seconds**, 5..300): integration periodic tick.
-- Groups (`group_name`/`sensors`/`targets`/`delay`) are stored in the config entry and managed via services.
+Old `binary_sensor.*_occupancy` entities from the previous integration are
+removed when the old entry is deleted. The new Door Occupancy integration
+recreates them with the same `unique_id` format, so HA assigns the same
+default entity id string — unless you had renamed them, in which case the
+custom name is not restored (registry record is gone).
