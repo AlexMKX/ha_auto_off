@@ -44,29 +44,22 @@ class TestAutoOffIntegrationE2E:
         # Wait for services to register
         await asyncio.sleep(2)
 
-        # Call set_group service
-        config_yaml = """sensors:
-  - binary_sensor.test_motion
-targets:
-  - light.test_light
-delay: 1
-"""
         await ha_instance.call_service("auto_off", "set_group", {
             "group_name": "test_group",
-            "config": config_yaml,
+            "targets": ["light.test_light"],
+            "sensors": ["binary_sensor.test_motion"],
+            "delay": 1,
         })
 
         # Wait for entity to be created
         await asyncio.sleep(2)
 
-        # Verify text entity was created
+        # Verify deadline sensor was created
         try:
-            state = await ha_instance.get_state("text.auto_off_test_group_config")
+            state = await ha_instance.get_state("sensor.auto_off_test_group_deadline")
             assert state is not None
-            assert "sensors" in state["state"] or len(state["state"]) > 0
         except Exception:
-            # Entity might have a different naming convention
-            pass
+            pass  # Entity might have a different naming convention
 
     async def test_auto_off_functionality(self, ha_instance):
         """Test the auto-off functionality with real entities."""
@@ -76,16 +69,11 @@ delay: 1
             await ha_instance.add_integration("auto_off", {"poll_interval": 15})
             await asyncio.sleep(2)
 
-        # Create a group with delay: 0 to turn off immediately when sensor is off
-        config_yaml = """sensors:
-  - binary_sensor.test_motion_2
-targets:
-  - light.test_light_2
-delay: 0
-"""
         await ha_instance.call_service("auto_off", "set_group", {
             "group_name": "test_auto_off_group",
-            "config": config_yaml,
+            "targets": ["light.test_light_2"],
+            "sensors": ["binary_sensor.test_motion_2"],
+            "delay": 0,
         })
         await asyncio.sleep(3)
 
@@ -120,15 +108,11 @@ delay: 0
     async def test_delete_group_service(self, ha_instance):
         """Test the delete_group service removes a group."""
         # First create a group
-        config_yaml = """sensors:
-  - binary_sensor.test_motion
-targets:
-  - light.test_light
-delay: 5
-"""
         await ha_instance.call_service("auto_off", "set_group", {
             "group_name": "group_to_delete",
-            "config": config_yaml,
+            "targets": ["light.test_light"],
+            "sensors": ["binary_sensor.test_motion"],
+            "delay": 5,
         })
         await asyncio.sleep(2)
 
@@ -138,43 +122,30 @@ delay: 5
         })
         await asyncio.sleep(2)
 
-        # Verify group is deleted (text entity should be gone)
+        # Verify group is deleted (deadline sensor should be gone)
         try:
-            state = await ha_instance.get_state("text.auto_off_group_to_delete_config")
-            # If we get here, entity still exists (might be cached)
-            # Check if it's unavailable
-            assert state.get("state") == "unavailable" or state is None
+            state = await ha_instance.get_state("sensor.auto_off_group_to_delete_deadline")
+            assert state is None or state.get("state") == "unavailable"
         except Exception:
-            # Entity not found - this is expected
-            pass
+            pass  # Entity not found - expected
 
     async def test_update_group_config(self, ha_instance):
         """Test updating an existing group's configuration."""
         # Create initial group
-        config_yaml_v1 = """sensors:
-  - binary_sensor.test_motion
-targets:
-  - light.test_light
-delay: 5
-"""
         await ha_instance.call_service("auto_off", "set_group", {
             "group_name": "update_test_group",
-            "config": config_yaml_v1,
+            "targets": ["light.test_light"],
+            "sensors": ["binary_sensor.test_motion"],
+            "delay": 5,
         })
         await asyncio.sleep(2)
 
         # Update the group with new config
-        config_yaml_v2 = """sensors:
-  - binary_sensor.test_motion
-  - binary_sensor.test_motion_2
-targets:
-  - light.test_light
-  - light.test_light_2
-delay: 10
-"""
         await ha_instance.call_service("auto_off", "set_group", {
             "group_name": "update_test_group",
-            "config": config_yaml_v2,
+            "targets": ["light.test_light", "light.test_light_2"],
+            "sensors": ["binary_sensor.test_motion", "binary_sensor.test_motion_2"],
+            "delay": 10,
         })
         await asyncio.sleep(2)
 
@@ -186,26 +157,20 @@ delay: 10
 class TestAutoOffServicesValidation:
     """Test service validation."""
 
-    async def test_set_group_invalid_yaml(self, ha_instance):
-        """Test that invalid YAML is rejected."""
-        # This should log an error but not crash
-        try:
+    async def test_set_group_empty_targets(self, ha_instance):
+        """Empty targets must be rejected (validated by GroupConfig)."""
+        with pytest.raises(Exception):
             await ha_instance.call_service("auto_off", "set_group", {
                 "group_name": "invalid_group",
-                "config": "invalid: yaml: [",
+                "targets": [],
+                "sensors": ["binary_sensor.test_motion"],
             })
-        except Exception:
-            pass  # Expected to fail or log error
-        await asyncio.sleep(1)
 
-    async def test_set_group_missing_required_fields(self, ha_instance):
-        """Test that missing required fields are rejected."""
-        # Missing sensors and targets
-        try:
+    async def test_set_group_requires_sensor_source(self, ha_instance):
+        with pytest.raises(Exception):
             await ha_instance.call_service("auto_off", "set_group", {
                 "group_name": "incomplete_group",
-                "config": "delay: 5",
+                "targets": ["light.test_light"],
+                "sensors": [],
+                "sensor_templates": [],
             })
-        except Exception:
-            pass  # Expected to fail or log error
-        await asyncio.sleep(1)

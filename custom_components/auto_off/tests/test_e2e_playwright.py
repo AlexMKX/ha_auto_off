@@ -663,11 +663,11 @@ class TestTextEntities:
             delay_state = await ha_with_integration.get_state(delay_entity)
             assert delay_state["state"] == "120"
             
-            # Verify the sensor entity also shows updated delay
-            config_entity = f"sensor.auto_off_{group_name}_config"
-            config_state = await ha_with_integration.get_state(config_entity)
-            # Should show "120 min" format (delay is in minutes)
-            assert "120 min" in config_state["state"]
+            # Verify the delay text entity still shows updated delay
+            delay_state = await ha_with_integration.get_state(delay_entity)
+            assert delay_state["state"] == "120", (
+                f"Delay text entity should show 120, got {delay_state['state']}"
+            )
             
         finally:
             await ha_with_integration.call_service(
@@ -726,7 +726,6 @@ class TestTextEntities:
         
         try:
             delay_entity = f"text.auto_off_{group_name}_delay_minutes"
-            config_entity = f"sensor.auto_off_{group_name}_config"
             
             # Verify initial delay
             delay_state = await ha_with_integration.get_state(delay_entity)
@@ -739,10 +738,6 @@ class TestTextEntities:
             # Verify delay changed in text entity
             delay_state = await ha_with_integration.get_state(delay_entity)
             assert delay_state["state"] == "90", f"Delay should be 90 after change, got {delay_state['state']}"
-            
-            # Verify config sensor shows updated delay
-            config_state = await ha_with_integration.get_state(config_entity)
-            assert "90" in config_state["state"], f"Config sensor should show 90 min, got {config_state['state']}"
             
         finally:
             await ha_with_integration.call_service(
