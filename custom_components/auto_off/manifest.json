@@ -4,8 +4,6 @@
   "version": "2512311117",
   "documentation": "https://github.com/AlexMKX/auto_off",
   "requirements": [
-    "jinja2",
-    "pyyaml",
     "pydantic"
   ],
   "dependencies": [],

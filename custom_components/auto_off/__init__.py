@@ -2,17 +2,20 @@
 import logging
 
 import voluptuous as vol
-import yaml
+from pydantic import ValidationError
 
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.config_entries import ConfigEntry, SOURCE_IMPORT
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers import config_validation as cv, device_registry as dr
 
 from .const import (
     DOMAIN,
     CONF_GROUPS,
     CONF_GROUP_NAME,
-    CONF_CONFIG,
+    CONF_SENSORS,
+    CONF_SENSOR_TEMPLATES,
+    CONF_TARGETS,
+    CONF_DELAY,
     SERVICE_SET_GROUP,
     SERVICE_DELETE_GROUP,
     PLATFORMS,
@@ -24,27 +27,15 @@ _LOGGER = logging.getLogger(__name__)
 
 SERVICE_SET_GROUP_SCHEMA = vol.Schema({
     vol.Required(CONF_GROUP_NAME): cv.string,
-    vol.Required(CONF_CONFIG): cv.string,
+    vol.Required(CONF_TARGETS): vol.All(cv.ensure_list, [cv.entity_id]),
+    vol.Optional(CONF_SENSORS, default=list): vol.All(cv.ensure_list, [cv.entity_id]),
+    vol.Optional(CONF_SENSOR_TEMPLATES, default=list): vol.All(cv.ensure_list, [cv.string]),
+    vol.Optional(CONF_DELAY, default=0): vol.Any(int, cv.string),
 })
 
 SERVICE_DELETE_GROUP_SCHEMA = vol.Schema({
     vol.Required(CONF_GROUP_NAME): cv.string,
 })
-
-
-async def async_setup(hass: HomeAssistant, config):
-    """Set up the Auto Off component from YAML (legacy support)."""
-    conf = config.get(DOMAIN)
-    if conf is not None:
-        hass.data.setdefault(DOMAIN, {})
-        hass.data[DOMAIN]["yaml_config"] = conf
-        # Create config entry from YAML if it doesn't exist
-        hass.async_create_task(
-            hass.config_entries.flow.async_init(
-                DOMAIN, context={"source": SOURCE_IMPORT}, data=conf
-            )
-        )
-    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -79,75 +70,60 @@ async def _async_register_services(hass: HomeAssistant, entry: ConfigEntry) -> N
     """Register Auto Off services."""
 
     async def handle_set_group(call: ServiceCall) -> None:
-        """Handle set_group service call."""
+        """Create or update an auto-off group from structured service data."""
         group_name = call.data[CONF_GROUP_NAME]
-        config_yaml = call.data[CONF_CONFIG]
+        config_dict = {
+            CONF_TARGETS: list(call.data[CONF_TARGETS]),
+            CONF_SENSORS: list(call.data.get(CONF_SENSORS, [])),
+            CONF_SENSOR_TEMPLATES: list(call.data.get(CONF_SENSOR_TEMPLATES, [])),
+            CONF_DELAY: call.data.get(CONF_DELAY, 0),
+        }
 
         try:
-            # Parse YAML config string
-            config_dict = yaml.safe_load(config_yaml)
-            if not isinstance(config_dict, dict):
-                _LOGGER.error("set_group config must be a YAML mapping, got %s", type(config_dict).__name__)
-                return
-
-            # Validate via pydantic model
             GroupConfig.model_validate(config_dict)
+        except ValidationError as err:
+            _LOGGER.error("Invalid config for group '%s': %s", group_name, err.errors())
+            return
 
-            # Get current groups from config entry
-            current_groups = dict(entry.data.get(CONF_GROUPS, {}))
-            is_new_group = group_name not in current_groups
+        current_groups = dict(entry.data.get(CONF_GROUPS, {}))
+        is_new_group = group_name not in current_groups
+        current_groups[group_name] = config_dict
 
-            # Update groups with structured data
-            current_groups[group_name] = config_dict
+        new_data = dict(entry.data)
+        new_data[CONF_GROUPS] = current_groups
+        hass.config_entries.async_update_entry(entry, data=new_data)
 
-            # Update config entry
-            new_data = dict(entry.data)
-            new_data[CONF_GROUPS] = current_groups
-            hass.config_entries.async_update_entry(entry, data=new_data)
+        manager = hass.data.get(DOMAIN)
+        if manager is None:
+            _LOGGER.error("Integration manager not found")
+            return
 
-            # Get manager and update/create group
-            manager = hass.data.get(DOMAIN)
-            if manager:
-                await manager.set_group(group_name, config_dict, is_new_group)
-                _LOGGER.info("Group '%s' %s", group_name, "created" if is_new_group else "updated")
-            else:
-                _LOGGER.error("Integration manager not found")
-
-        except yaml.YAMLError as e:
-            _LOGGER.error("Failed to parse YAML config for group '%s': %s", group_name, e)
-        except Exception as e:
-            _LOGGER.exception("Failed to set group '%s': %s", group_name, e)
+        await manager.set_group(group_name, config_dict, is_new_group)
+        _LOGGER.info(
+            "Group '%s' %s", group_name, "created" if is_new_group else "updated"
+        )
 
     async def handle_delete_group(call: ServiceCall) -> None:
-        """Handle delete_group service call."""
+        """Delete an auto-off group."""
         group_name = call.data[CONF_GROUP_NAME]
 
-        try:
-            # Get current groups from config entry
-            current_groups = dict(entry.data.get(CONF_GROUPS, {}))
+        current_groups = dict(entry.data.get(CONF_GROUPS, {}))
+        if group_name not in current_groups:
+            _LOGGER.warning("Group '%s' does not exist", group_name)
+            return
 
-            if group_name not in current_groups:
-                _LOGGER.warning(f"Group '{group_name}' does not exist")
-                return
+        del current_groups[group_name]
+        new_data = dict(entry.data)
+        new_data[CONF_GROUPS] = current_groups
+        hass.config_entries.async_update_entry(entry, data=new_data)
 
-            # Remove group
-            del current_groups[group_name]
+        manager = hass.data.get(DOMAIN)
+        if manager is None:
+            _LOGGER.error("Integration manager not found")
+            return
 
-            # Update config entry
-            new_data = dict(entry.data)
-            new_data[CONF_GROUPS] = current_groups
-            hass.config_entries.async_update_entry(entry, data=new_data)
-
-            # Get manager and remove group
-            manager = hass.data.get(DOMAIN)
-            if manager:
-                await manager.delete_group(group_name)
-                _LOGGER.info(f"Group '{group_name}' deleted")
-            else:
-                _LOGGER.error("Integration manager not found")
-
-        except Exception as e:
-            _LOGGER.exception(f"Failed to delete group '{group_name}': {e}")
+        await manager.delete_group(group_name)
+        _LOGGER.info("Group '%s' deleted", group_name)
 
     # Register services
     hass.services.async_register(

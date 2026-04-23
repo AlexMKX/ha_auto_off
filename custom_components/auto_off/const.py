@@ -5,7 +5,6 @@ CONFIG_VERSION = 3
 CONF_TARGETS = "targets"
 CONF_DELAY = "delay"
 CONF_POLL_INTERVAL = "poll_interval"
-CONF_CONFIG = "config"
 
 # Storage keys
 CONF_GROUPS = "groups"

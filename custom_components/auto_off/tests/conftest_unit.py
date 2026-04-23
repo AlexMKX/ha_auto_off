@@ -72,3 +72,15 @@ def sample_group_config_dict():
         "targets": ["light.living_room"],
         "delay": 5,
     }
+
+
+@pytest.fixture
+def sample_set_group_payload():
+    """Service call data for set_group in the new structured shape."""
+    return {
+        "group_name": "kitchen",
+        "targets": ["light.kitchen"],
+        "sensors": ["binary_sensor.motion_kitchen"],
+        "sensor_templates": [],
+        "delay": 5,
+    }

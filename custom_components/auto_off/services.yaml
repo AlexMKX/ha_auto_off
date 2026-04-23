@@ -1,27 +1,45 @@
 set_group:
   name: Set Group
-  description: Create or update an auto-off group with the specified configuration.
+  description: Create or update an auto-off group.
   fields:
     group_name:
       name: Group Name
-      description: The unique name of the group.
+      description: Unique name of the group.
       required: true
-      example: "living_room_lights"
+      example: kitchen
       selector:
         text:
-    config:
-      name: Configuration
-      description: The group configuration in YAML format (sensors, targets, delay).
+    targets:
+      name: Targets
+      description: Entities to turn off when the delay elapses.
       required: true
-      example: |
-        sensors:
-          - binary_sensor.motion_living_room
-        targets:
-          - light.living_room
-        delay: 5
+      selector:
+        entity:
+          multiple: true
+    sensors:
+      name: Sensors
+      description: Binary sensors whose OFF state starts the turn-off timer.
+      required: false
+      selector:
+        entity:
+          multiple: true
+          domain: binary_sensor
+    sensor_templates:
+      name: Sensor templates
+      description: >
+        Jinja templates rendered to bool. Treated the same as binary sensors.
+      required: false
+      selector:
+        object:
+    delay:
+      name: Delay (minutes)
+      description: >
+        Integer (minutes) or a Jinja template rendering to minutes.
+      required: false
+      default: 0
+      example: 5
       selector:
         text:
-          multiline: true
 
 delete_group:
   name: Delete Group
@@ -29,8 +47,8 @@ delete_group:
   fields:
     group_name:
       name: Group Name
-      description: The name of the group to delete.
+      description: Name of the group to delete.
       required: true
-      example: "living_room_lights"
+      example: kitchen
       selector:
         text:
