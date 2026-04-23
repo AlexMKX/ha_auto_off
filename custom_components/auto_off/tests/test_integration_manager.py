@@ -150,26 +150,50 @@ class TestIntegrationManager:
 
 
 class TestGetGroupConfig:
-    def test_returns_active_group_config(self, hass, config_entry):
-        config_entry.data = {
-            "poll_interval": 15,
-            "groups": {
-                "kitchen": {
-                    "targets": ["light.kitchen"],
-                    "sensors": ["binary_sensor.motion"],
-                    "delay": 5,
-                }
-            },
-        }
+    """`get_group_config` is observed by deadline sensor attributes; it must
+    round-trip whatever was installed through the public `set_group` API."""
+
+    async def test_round_trips_config_installed_via_set_group(self, hass, config_entry):
+        config_entry.data = {"poll_interval": 15, "groups": {}}
         mgr = IntegrationManager(hass, config_entry)
-        stub_group = MagicMock()
-        stub_group._config = GroupConfig(
-            targets=["light.kitchen"],
-            sensors=["binary_sensor.motion"],
-            delay=5,
-        )
-        mgr.auto_off._groups["kitchen"] = stub_group
-        assert mgr.get_group_config("kitchen").targets == ["light.kitchen"]
+
+        installed_config = {
+            "targets": ["light.kitchen"],
+            "sensors": ["binary_sensor.motion"],
+            "delay": 5,
+        }
+
+        # `set_group` delegates to AutoOffManager.async_init_groups to build
+        # the actual SensorGroup. In a unit test we simulate that step: when
+        # init runs, pretend a SensorGroup was created with this config.
+        async def fake_init_groups():
+            group = MagicMock()
+            group._config = GroupConfig.model_validate(installed_config)
+            group.check_and_set_deadline = AsyncMock()
+            group._get_human_deadline = MagicMock(return_value="None")
+            mgr.auto_off._groups["kitchen"] = group
+
+        mgr.auto_off.async_init_groups = AsyncMock(side_effect=fake_init_groups)
+
+        # Stub platform entity factories so set_group doesn't touch real HA
+        # entity plumbing. This keeps the focus of the test on the
+        # set_group -> get_group_config contract.
+        with (
+            patch("custom_components.auto_off.sensor.DeadlineSensorEntity") as mock_sensor_cls,
+            patch("custom_components.auto_off.text.DelayTextEntity") as mock_text_cls,
+        ):
+            mock_sensor_cls.return_value = MagicMock()
+            mock_text_cls.return_value = MagicMock()
+            mgr._sensor_async_add_entities = MagicMock()
+            mgr._text_async_add_entities = MagicMock()
+
+            await mgr.set_group("kitchen", installed_config, is_new=True)
+
+        got = mgr.get_group_config("kitchen")
+        assert got is not None
+        assert got.targets == ["light.kitchen"]
+        assert got.sensors == ["binary_sensor.motion"]
+        assert got.delay == 5
 
     def test_returns_none_for_unknown_group(self, hass, config_entry):
         mgr = IntegrationManager(hass, config_entry)
