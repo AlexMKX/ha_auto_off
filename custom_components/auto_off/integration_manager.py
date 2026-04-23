@@ -59,15 +59,11 @@ class IntegrationManager:
         deadline_entity.update_deadline(deadline_iso)
 
     def sensor_platform_ready(self, async_add_entities: AddEntitiesCallback) -> None:
-        """Called when the sensor platform is ready."""
-        self._sensor_async_add_entities = async_add_entities
-        self._create_deadline_entities_for_existing_groups()
-
-    def _create_deadline_entities_for_existing_groups(self) -> None:
-        if not self._sensor_async_add_entities:
-            return
-
+        """Register the sensor platform's add-entities callback and create
+        deadline sensors for any groups that already exist in the config entry."""
         from .sensor import DeadlineSensorEntity
+
+        self._sensor_async_add_entities = async_add_entities
 
         new_entities = []
         for group_name in self._groups_data:
@@ -78,35 +74,33 @@ class IntegrationManager:
             new_entities.append(deadline_entity)
 
         if new_entities:
-            self._sensor_async_add_entities(new_entities)
+            async_add_entities(new_entities)
             _LOGGER.info(
                 "Created %d deadline sensor entities for groups", len(new_entities)
             )
 
     def text_platform_ready(self, async_add_entities: AddEntitiesCallback) -> None:
-        """Called when text platform is ready."""
-        self._text_async_add_entities = async_add_entities
-        self._create_text_entities_for_existing_groups()
-
-    def _create_text_entities_for_existing_groups(self) -> None:
-        """Create text entities for all existing groups."""
-        if not self._text_async_add_entities:
-            return
-
+        """Register the text platform's add-entities callback and create
+        delay text entities for any groups that already exist in the config entry."""
         from .text import DelayTextEntity
+
+        self._text_async_add_entities = async_add_entities
 
         new_entities = []
         for group_name, config_dict in self._groups_data.items():
-            if group_name not in self._text_entities:
-                delay_entity = DelayTextEntity(
-                    self.hass, self, group_name, config_dict
-                )
-                self._text_entities[group_name] = delay_entity
-                new_entities.append(delay_entity)
+            if group_name in self._text_entities:
+                continue
+            delay_entity = DelayTextEntity(
+                self.hass, self, group_name, config_dict
+            )
+            self._text_entities[group_name] = delay_entity
+            new_entities.append(delay_entity)
 
         if new_entities:
-            self._text_async_add_entities(new_entities)
-            _LOGGER.info(f"Created {len(new_entities)} delay text entities for groups")
+            async_add_entities(new_entities)
+            _LOGGER.info(
+                "Created %d delay text entities for groups", len(new_entities)
+            )
 
     async def async_initialize(self):
         """Initialize the integration manager."""
@@ -120,18 +114,15 @@ class IntegrationManager:
         _LOGGER.info("IntegrationManager initialized with poll_interval %ds", poll_interval)
 
     async def _periodic_worker(self, now):
-        """Periodic worker for checking states."""
+        """Periodic worker: advance group state machines and refresh
+        deadline sensors with the latest human-readable deadline."""
         if self._lock.locked():
             _LOGGER.warning("IntegrationManager worker already running, skipping this tick")
             return
         async with self._lock:
             await self.auto_off.periodic_worker()
-            self._update_deadline_sensors()
-
-    def _update_deadline_sensors(self) -> None:
-        """Update all deadline sensors with current deadline values."""
-        for group_name in self._deadline_entities:
-            self._update_deadline_sensor_for_group(group_name)
+            for group_name in self._deadline_entities:
+                self._update_deadline_sensor_for_group(group_name)
 
     def _update_deadline_sensor_for_group(self, group_name: str) -> None:
         """Update deadline sensor for a specific group."""
