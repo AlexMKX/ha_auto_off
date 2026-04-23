@@ -14,4 +14,4 @@ SERVICE_SET_GROUP = "set_group"
 SERVICE_DELETE_GROUP = "delete_group"
 
 # Platforms
-PLATFORMS = ["binary_sensor", "sensor", "text"]
+PLATFORMS = ["sensor", "text"]

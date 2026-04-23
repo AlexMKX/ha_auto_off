@@ -17,7 +17,7 @@ from .const import (
     SERVICE_DELETE_GROUP,
     PLATFORMS,
 )
-from .integration_manager import async_unload_integration
+from .integration_manager import IntegrationManager
 from .auto_off import GroupConfig
 
 _LOGGER = logging.getLogger(__name__)
@@ -49,10 +49,12 @@ async def async_setup(hass: HomeAssistant, config):
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Auto Off from a config entry."""
-    # Forward setup to platforms
+    manager = IntegrationManager(hass, entry)
+    hass.data[DOMAIN] = manager
+    await manager.async_initialize()
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Register services
     await _async_register_services(hass, entry)
 
     return True
@@ -60,15 +62,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    # Unload platforms
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     if unload_ok:
-        # Unregister services
         hass.services.async_remove(DOMAIN, SERVICE_SET_GROUP)
         hass.services.async_remove(DOMAIN, SERVICE_DELETE_GROUP)
 
-        await async_unload_integration(hass, entry)
+        manager = hass.data.pop(DOMAIN, None)
+        if manager is not None:
+            await manager.async_unload()
 
     return unload_ok
 

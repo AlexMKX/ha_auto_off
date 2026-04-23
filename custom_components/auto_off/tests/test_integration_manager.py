@@ -5,8 +5,6 @@ from unittest.mock import MagicMock, AsyncMock, patch
 from custom_components.auto_off.integration_manager import (
     IntegrationManager,
     parse_group_configs,
-    async_setup_integration,
-    async_unload_integration,
 )
 from custom_components.auto_off.const import DOMAIN, CONF_GROUPS, CONF_POLL_INTERVAL
 
@@ -53,13 +51,13 @@ class TestIntegrationManager:
     """Test IntegrationManager class."""
 
     @pytest.fixture
-    def manager(self, hass, config_entry, async_add_entities):
+    def manager(self, hass, config_entry):
         """Create an IntegrationManager instance."""
         with patch(
             "custom_components.auto_off.integration_manager.AutoOffManager"
         ) as mock_aom:
             mock_aom.return_value = MagicMock()
-            manager = IntegrationManager(hass, config_entry, async_add_entities)
+            manager = IntegrationManager(hass, config_entry)
             manager.auto_off = MagicMock()
             manager.auto_off.config = {}
             manager.auto_off._groups = {}
@@ -155,40 +153,3 @@ class TestIntegrationManager:
 
         mock_add_entities.assert_called_once()
         assert len(mock_add_entities.call_args[0][0]) == 1
-
-
-class TestAsyncSetupIntegration:
-    """Test async_setup_integration function."""
-
-    @pytest.mark.asyncio
-    async def test_setup_creates_manager(self, hass, config_entry, async_add_entities):
-        """Test setup creates and initializes manager."""
-        with patch(
-            "custom_components.auto_off.integration_manager.IntegrationManager"
-        ) as mock_manager_class:
-            mock_manager = MagicMock()
-            mock_manager.async_initialize = AsyncMock()
-            mock_manager_class.return_value = mock_manager
-
-            result = await async_setup_integration(hass, config_entry, async_add_entities)
-
-        assert result is True
-        assert hass.data[DOMAIN] == mock_manager
-        mock_manager.async_initialize.assert_called_once()
-
-
-class TestAsyncUnloadIntegration:
-    """Test async_unload_integration function."""
-
-    @pytest.mark.asyncio
-    async def test_unload_cleans_up(self, hass, config_entry):
-        """Test unload cleans up manager."""
-        mock_manager = MagicMock()
-        mock_manager.async_unload = AsyncMock()
-        hass.data[DOMAIN] = mock_manager
-
-        result = await async_unload_integration(hass, config_entry)
-
-        assert result is True
-        assert DOMAIN not in hass.data
-        mock_manager.async_unload.assert_called_once()

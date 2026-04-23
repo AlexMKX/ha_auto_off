@@ -31,10 +31,9 @@ def parse_group_configs(groups_data: dict[str, dict]) -> dict[str, GroupConfig]:
 class IntegrationManager:
     """Manages the Auto Off integration."""
 
-    def __init__(self, hass, entry, async_add_entities):
+    def __init__(self, hass, entry):
         self.hass = hass
         self.entry = entry
-        self._binary_sensor_async_add_entities = async_add_entities
         self._sensor_async_add_entities: AddEntitiesCallback | None = None
         self._sensor_entities: dict[str, Any] = {}
         self._deadline_entities: dict[str, Any] = {}
@@ -285,26 +284,3 @@ class IntegrationManager:
         self._sensor_entities.clear()
         self._deadline_entities.clear()
         self._text_entities.clear()
-
-
-default_manager = None
-
-
-async def async_setup_integration(hass, entry, async_add_entities):
-    """Set up the integration from binary_sensor platform."""
-    global default_manager
-    manager = IntegrationManager(hass, entry, async_add_entities)
-    hass.data[DOMAIN] = manager
-    default_manager = manager
-    await manager.async_initialize()
-    return True
-
-
-async def async_unload_integration(hass, entry):
-    """Unload the integration."""
-    global default_manager
-    manager = hass.data.pop(DOMAIN, None)
-    if manager and hasattr(manager, "async_unload"):
-        await manager.async_unload()
-    default_manager = None
-    return True
