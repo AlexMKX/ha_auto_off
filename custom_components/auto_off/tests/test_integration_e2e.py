@@ -265,6 +265,46 @@ class TestAutoOffIntegrationE2E:
         )
 
 
+    @pytest.mark.docker_e2e
+    async def test_group_entities_are_created_per_domain(self, ha_instance):
+        """After set_group, expect sensors-group + one targets-group per domain."""
+        await ha_instance.call_service(
+            "auto_off",
+            "set_group",
+            {
+                "group_name": "e2e_groups",
+                "targets": [
+                    "light.e2e_target_light",
+                    "switch.e2e_target_switch",
+                ],
+                "sensors": ["binary_sensor.e2e_trigger"],
+                "delay": 1,
+            },
+        )
+
+        # Poll up to ~5s for registry propagation
+        found = False
+        for _ in range(50):
+            entities = await ha_instance.get_states()
+            ids = {e["entity_id"] for e in entities}
+            if {
+                "binary_sensor.auto_off_e2e_groups_sensors",
+                "light.auto_off_e2e_groups_targets_light",
+                "switch.auto_off_e2e_groups_targets_switch",
+            }.issubset(ids):
+                found = True
+                break
+            await asyncio.sleep(0.1)
+
+        if not found:
+            entities = await ha_instance.get_states()
+            ids = {e["entity_id"] for e in entities}
+            pytest.fail(
+                "Group entities did not appear in states: "
+                f"{sorted(i for i in ids if 'auto_off_e2e_groups' in i)}"
+            )
+
+
 # NOTE: service input validation (empty targets, missing sensor source, etc.)
 # is covered by unit tests in `test_set_group_service.py`. Those tests assert
 # the observable contract: handler returns without calling
