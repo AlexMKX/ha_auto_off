@@ -35,8 +35,30 @@ CONF_SENSORS = "sensors"
 CONF_SENSOR_TEMPLATES = "sensor_templates"
 CONF_DELAY = "delay"
 
-# Platforms forwarded by async_setup_entry
-PLATFORMS = ["sensor", "text"]
+# Platforms forwarded by async_setup_entry.
+# - sensor: deadline sensor (existing)
+# - text: delay text entity (existing)
+# - binary_sensor: SensorsGroup member aggregation
+# - light / switch / fan / cover / media_player / lock / valve: per-domain
+#   target group entities
+PLATFORMS = [
+    "sensor",
+    "text",
+    "binary_sensor",
+    "light",
+    "switch",
+    "fan",
+    "cover",
+    "media_player",
+    "lock",
+    "valve",
+]
+
+# Domains for which HA ships a group platform that we can drive.
+# Keys map GroupConfig.targets entity-id prefix to the HA group domain.
+GROUPABLE_DOMAINS = frozenset(
+    {"light", "switch", "fan", "cover", "media_player", "lock", "valve"}
+)
 
 __all__ = [
     "DOMAIN",
@@ -51,4 +73,5 @@ __all__ = [
     "CONF_SENSOR_TEMPLATES",
     "CONF_DELAY",
     "PLATFORMS",
+    "GROUPABLE_DOMAINS",
 ]
