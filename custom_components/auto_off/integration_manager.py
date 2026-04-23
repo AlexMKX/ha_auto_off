@@ -15,9 +15,7 @@ from .const import CONF_GROUPS, CONF_POLL_INTERVAL, DOMAIN
 from .group_entities import (
     TARGET_GROUP_ENTITY_CLASSES,
     AutoOffSensorsGroup,
-    sensors_group_entity_id,
     split_targets_by_domain,
-    targets_group_entity_id,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -128,16 +126,36 @@ class IntegrationManager:
         return split_targets_by_domain(list(config.targets))
 
     def get_group_member_group_entity_ids(self, group_name: str) -> list[str]:
-        """Return the entity_ids of all live targets-group entities for a group.
+        """Return the real entity_ids of all live targets-group entities for a group.
 
         Used by SensorGroup.turn_off to dispatch one <domain>.turn_off call
-        per domain-group.
+        per domain-group.  Returns the actual `entity.entity_id` that HA
+        assigned after `async_added_to_hass` — NOT the predicted string from
+        `targets_group_entity_id()`, which can differ from HA's slugify
+        output when the entity has `name=None` + `translation_key`.
+        Entities whose `entity_id` has not yet been assigned are skipped;
+        the caller's fallback path turns off members individually.
         """
-        return [
-            targets_group_entity_id(domain, group_name)
+        result = []
+        for (name, _domain), entity in self._targets_group_entities.items():
+            if name != group_name:
+                continue
+            entity_id = getattr(entity, "entity_id", None)
+            if entity_id:
+                result.append(entity_id)
+        return result
+
+    def get_group_covered_domains(self, group_name: str) -> set[str]:
+        """Return domains whose targets are covered by a live group entity.
+
+        Includes even entities whose entity_id has not yet been assigned —
+        so that the caller does NOT fall back to per-entity turn_off for
+        those (we prefer an eventual retry over duplicate calls)."""
+        return {
+            domain
             for (name, domain) in self._targets_group_entities.keys()
             if name == group_name
-        ]
+        }
 
     async def _sync_group_entities(
         self, group_name: str, config_dict: dict, is_new: bool
@@ -186,8 +204,11 @@ class IntegrationManager:
                 entity = self._targets_group_entities.pop(key, None)
                 if entity is None:
                     continue
-                entity_id = targets_group_entity_id(gone_domain, group_name)
-                ent_reg.async_remove(entity_id)
+                # Use the real entity_id HA assigned; our predicted string
+                # from targets_group_entity_id() does not always match.
+                entity_id = getattr(entity, "entity_id", None)
+                if entity_id:
+                    ent_reg.async_remove(entity_id)
 
         # Add / update domains that should exist
         for domain, ids in desired.items():
@@ -392,14 +413,18 @@ class IntegrationManager:
             ent_reg = er.async_get(self.hass)
             sensors_entity = self._sensors_group_entities.pop(group_name, None)
             if sensors_entity is not None and ent_reg:
-                ent_reg.async_remove(sensors_group_entity_id(group_name))
+                real_id = getattr(sensors_entity, "entity_id", None)
+                if real_id:
+                    ent_reg.async_remove(real_id)
 
             # Remove every per-domain targets-group entity
             for key in [k for k in self._targets_group_entities if k[0] == group_name]:
-                self._targets_group_entities.pop(key, None)
-                _, domain = key
-                if ent_reg:
-                    ent_reg.async_remove(targets_group_entity_id(domain, group_name))
+                entity = self._targets_group_entities.pop(key, None)
+                if entity is None or not ent_reg:
+                    continue
+                real_id = getattr(entity, "entity_id", None)
+                if real_id:
+                    ent_reg.async_remove(real_id)
 
             # Remove device
             dev_reg = dr.async_get(self.hass)

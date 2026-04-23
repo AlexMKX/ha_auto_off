@@ -617,7 +617,10 @@ class SensorGroup:
         self._timer_deadline = None
         self._notify_deadline_change()
 
-        # Primary path: one <domain>.turn_off call per groupable domain.
+        # Primary path: one <domain>.turn_off call per live group entity.
+        # We dispatch to the REAL entity_id HA assigned (may differ from
+        # our `targets_group_entity_id()` prediction because `name=None`
+        # + `translation_key` changes the slugify output).
         dispatched_domains: set[str] = set()
         if self._manager is not None:
             for entity_id in self._manager.get_group_member_group_entity_ids(
@@ -640,9 +643,11 @@ class SensorGroup:
                         exc,
                     )
 
-        # Fallback: per-entity for targets whose domain has no group platform.
-        from .const import GROUPABLE_DOMAINS  # local import to avoid cycle
-
+        # Fallback: for every target whose domain was NOT dispatched via a
+        # live group entity, issue an individual turn_off.  This covers
+        # both non-groupable domains (scene, input_boolean, ...) AND the
+        # case where a group entity exists in our bookkeeping but has no
+        # entity_id assigned yet (e.g. not fully added to HA).
         tasks = []
         for target in self._targets:
             entity_id = getattr(target, "entity_id", "")
@@ -650,9 +655,7 @@ class SensorGroup:
                 continue
             domain = entity_id.split(".", 1)[0]
             if domain in dispatched_domains:
-                continue  # handled by group turn_off
-            if domain in GROUPABLE_DOMAINS:
-                continue  # should already be covered; skip defensively
+                continue  # handled by group turn_off above
             tasks.append(target.turn_off())
         if tasks:
             await asyncio.gather(*tasks)

@@ -234,6 +234,39 @@ class TestUpdateGroupConfigWritesState:
         mock_entity.async_write_ha_state.assert_called()
 
 
+class TestGetGroupMemberGroupEntityIds:
+    """Regression for https://github.com/AlexMKX/ha_auto_off — sensor group
+    `_turn_off_targets` was calling a predicted entity_id string that did
+    not match the entity_id HA actually assigned when entities had
+    `name=None` + `translation_key`.  The fix is to store and return the
+    real `entity.entity_id` rather than synthesising it from a template."""
+
+    async def test_returns_real_entity_id_not_predicted(self, hass, config_entry):
+        config_entry.data = {"poll_interval": 15, "groups": {}}
+        manager = IntegrationManager(hass, config_entry)
+
+        # Simulate a targets-group entity whose real entity_id differs
+        # from the predicted one (HA may slugify to a shorter form when
+        # name=None + translation_key are used).
+        fake_entity = MagicMock()
+        fake_entity.entity_id = "light.auto_off_mast_auto_off"  # real id from HA
+        manager._targets_group_entities[("mast_auto_off", "light")] = fake_entity
+
+        ids = manager.get_group_member_group_entity_ids("mast_auto_off")
+        assert ids == ["light.auto_off_mast_auto_off"]
+
+    async def test_skips_entities_without_entity_id(self, hass, config_entry):
+        config_entry.data = {"poll_interval": 15, "groups": {}}
+        manager = IntegrationManager(hass, config_entry)
+
+        fake_entity = MagicMock()
+        fake_entity.entity_id = None  # not yet added to HA
+        manager._targets_group_entities[("k", "light")] = fake_entity
+
+        # Skipped → fallback in SensorGroup._turn_off_targets picks it up.
+        assert manager.get_group_member_group_entity_ids("k") == []
+
+
 class TestGroupEntityHelpers:
     async def test_get_group_config_returns_parsed(self, hass, config_entry):
         """get_group_config materialises stored dict as GroupConfig."""
