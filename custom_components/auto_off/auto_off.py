@@ -453,8 +453,8 @@ class SensorGroup:
         rendered = tpl.async_render()
         try:
             return int(rendered) * 60
-        except Exception:
-            raise ValueError(f"Failed to render delay template: {self._config.delay}, result: {rendered}")
+        except Exception as err:
+            raise ValueError(f"Failed to render delay template: {self._config.delay}, result: {rendered}") from err
 
     async def check_and_set_deadline(self):
         """Main method for checking and setting deadline"""

@@ -6,6 +6,7 @@ ha-test-kit handles provisioning and exports:
   - HASS_LONG_LIVED_TOKEN
 """
 
+import contextlib
 import os
 
 import aiohttp
@@ -37,29 +38,35 @@ class HAInstance:
     # -- low-level helpers ---------------------------------------------------
 
     async def api_get(self, path: str) -> dict:
-        async with aiohttp.ClientSession(connector=self._connector()) as s:
-            async with s.get(f"{self.base_url}{path}", headers=self._headers) as r:
-                r.raise_for_status()
-                return await r.json()
+        async with (
+            aiohttp.ClientSession(connector=self._connector()) as s,
+            s.get(f"{self.base_url}{path}", headers=self._headers) as r,
+        ):
+            r.raise_for_status()
+            return await r.json()
 
     async def api_post(self, path: str, json: dict | None = None) -> dict:
-        async with aiohttp.ClientSession(connector=self._connector()) as s:
-            async with s.post(f"{self.base_url}{path}", headers=self._headers, json=json or {}) as r:
-                r.raise_for_status()
-                return await r.json()
+        async with (
+            aiohttp.ClientSession(connector=self._connector()) as s,
+            s.post(f"{self.base_url}{path}", headers=self._headers, json=json or {}) as r,
+        ):
+            r.raise_for_status()
+            return await r.json()
 
     # -- domain helpers ------------------------------------------------------
 
     async def call_service(self, domain: str, service: str, data: dict | None = None) -> None:
-        async with aiohttp.ClientSession(connector=self._connector()) as s:
-            async with s.post(
+        async with (
+            aiohttp.ClientSession(connector=self._connector()) as s,
+            s.post(
                 f"{self.base_url}/api/services/{domain}/{service}",
                 headers=self._headers,
                 json=data or {},
-            ) as r:
-                if r.status >= 400:
-                    text = await r.text()
-                    raise RuntimeError(f"Service call {domain}.{service} failed: {text}")
+            ) as r,
+        ):
+            if r.status >= 400:
+                text = await r.text()
+                raise RuntimeError(f"Service call {domain}.{service} failed: {text}")
 
     async def get_state(self, entity_id: str) -> dict:
         return await self.api_get(f"/api/states/{entity_id}")
@@ -151,10 +158,8 @@ async def reset_test_entities(ha_instance: HAInstance):
         "input_boolean.test_switch_state",
     ]
     for entity in entities:
-        try:
+        with contextlib.suppress(Exception):
             await ha_instance.call_service("input_boolean", "turn_off", {"entity_id": entity})
-        except Exception:
-            pass
     import asyncio
 
     await asyncio.sleep(1)

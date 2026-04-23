@@ -102,13 +102,15 @@ class TestIntegrationManager:
         mock_group.async_unload = AsyncMock()
         manager.auto_off._groups["to_delete"] = mock_group
 
-        with patch("custom_components.auto_off.integration_manager.er.async_get") as mock_er:
-            with patch("custom_components.auto_off.integration_manager.dr.async_get") as mock_dr:
-                mock_er.return_value = MagicMock()
-                mock_dr.return_value = MagicMock()
-                mock_dr.return_value.async_get_device.return_value = None
+        with (
+            patch("custom_components.auto_off.integration_manager.er.async_get") as mock_er,
+            patch("custom_components.auto_off.integration_manager.dr.async_get") as mock_dr,
+        ):
+            mock_er.return_value = MagicMock()
+            mock_dr.return_value = MagicMock()
+            mock_dr.return_value.async_get_device.return_value = None
 
-                await manager.delete_group("to_delete")
+            await manager.delete_group("to_delete")
 
         assert "to_delete" not in manager._groups_data
         assert "to_delete" not in manager.auto_off.config

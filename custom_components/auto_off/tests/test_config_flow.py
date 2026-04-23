@@ -24,9 +24,11 @@ class TestAutoOffConfigFlow:
     @pytest.mark.asyncio
     async def test_step_user_form(self, flow):
         """Test user step shows form."""
-        with patch.object(flow, "async_set_unique_id", new_callable=AsyncMock):
-            with patch.object(flow, "_abort_if_unique_id_configured"):
-                result = await flow.async_step_user(user_input=None)
+        with (
+            patch.object(flow, "async_set_unique_id", new_callable=AsyncMock),
+            patch.object(flow, "_abort_if_unique_id_configured"),
+        ):
+            result = await flow.async_step_user(user_input=None)
 
         assert result["type"] == "form"
         assert result["step_id"] == "user"
@@ -35,11 +37,13 @@ class TestAutoOffConfigFlow:
     @pytest.mark.asyncio
     async def test_step_user_create_entry(self, flow):
         """Test user step creates entry with input."""
-        with patch.object(flow, "async_set_unique_id", new_callable=AsyncMock):
-            with patch.object(flow, "_abort_if_unique_id_configured"):
-                with patch.object(flow, "async_create_entry") as mock_create:
-                    mock_create.return_value = {"type": "create_entry"}
-                    result = await flow.async_step_user(user_input={CONF_POLL_INTERVAL: 30})
+        with (
+            patch.object(flow, "async_set_unique_id", new_callable=AsyncMock),
+            patch.object(flow, "_abort_if_unique_id_configured"),
+            patch.object(flow, "async_create_entry") as mock_create,
+        ):
+            mock_create.return_value = {"type": "create_entry"}
+            await flow.async_step_user(user_input={CONF_POLL_INTERVAL: 30})
 
         mock_create.assert_called_once()
         call_kwargs = mock_create.call_args[1]
@@ -50,11 +54,13 @@ class TestAutoOffConfigFlow:
     @pytest.mark.asyncio
     async def test_step_user_default_poll_interval(self, flow):
         """Test user step uses default poll interval."""
-        with patch.object(flow, "async_set_unique_id", new_callable=AsyncMock):
-            with patch.object(flow, "_abort_if_unique_id_configured"):
-                with patch.object(flow, "async_create_entry") as mock_create:
-                    mock_create.return_value = {"type": "create_entry"}
-                    result = await flow.async_step_user(user_input={})
+        with (
+            patch.object(flow, "async_set_unique_id", new_callable=AsyncMock),
+            patch.object(flow, "_abort_if_unique_id_configured"),
+            patch.object(flow, "async_create_entry") as mock_create,
+        ):
+            mock_create.return_value = {"type": "create_entry"}
+            await flow.async_step_user(user_input={})
 
         call_kwargs = mock_create.call_args[1]
         assert call_kwargs["data"][CONF_POLL_INTERVAL] == 15  # default

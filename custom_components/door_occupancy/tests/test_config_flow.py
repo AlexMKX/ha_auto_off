@@ -29,9 +29,11 @@ class TestDoorOccupancyConfigFlow:
         return flow
 
     async def test_step_user_shows_form_when_no_input(self, flow):
-        with patch.object(flow, "async_set_unique_id", new_callable=AsyncMock):
-            with patch.object(flow, "_abort_if_unique_id_configured"):
-                result = await flow.async_step_user(user_input=None)
+        with (
+            patch.object(flow, "async_set_unique_id", new_callable=AsyncMock),
+            patch.object(flow, "_abort_if_unique_id_configured"),
+        ):
+            result = await flow.async_step_user(user_input=None)
 
         assert result["type"] == "form"
         assert result["step_id"] == "user"
@@ -39,11 +41,13 @@ class TestDoorOccupancyConfigFlow:
         assert CONF_OCCUPANCY_TIMEOUT in result["data_schema"].schema
 
     async def test_step_user_creates_entry_with_defaults(self, flow):
-        with patch.object(flow, "async_set_unique_id", new_callable=AsyncMock):
-            with patch.object(flow, "_abort_if_unique_id_configured"):
-                with patch.object(flow, "async_create_entry") as mock_create:
-                    mock_create.return_value = {"type": "create_entry"}
-                    await flow.async_step_user(user_input={})
+        with (
+            patch.object(flow, "async_set_unique_id", new_callable=AsyncMock),
+            patch.object(flow, "_abort_if_unique_id_configured"),
+            patch.object(flow, "async_create_entry") as mock_create,
+        ):
+            mock_create.return_value = {"type": "create_entry"}
+            await flow.async_step_user(user_input={})
 
         call_kwargs = mock_create.call_args[1]
         assert call_kwargs["title"] == "Door Occupancy"
@@ -51,16 +55,18 @@ class TestDoorOccupancyConfigFlow:
         assert call_kwargs["data"][CONF_OCCUPANCY_TIMEOUT] == DEFAULT_OCCUPANCY_TIMEOUT
 
     async def test_step_user_creates_entry_with_user_values(self, flow):
-        with patch.object(flow, "async_set_unique_id", new_callable=AsyncMock):
-            with patch.object(flow, "_abort_if_unique_id_configured"):
-                with patch.object(flow, "async_create_entry") as mock_create:
-                    mock_create.return_value = {"type": "create_entry"}
-                    await flow.async_step_user(
-                        user_input={
-                            CONF_POLL_INTERVAL: 60,
-                            CONF_OCCUPANCY_TIMEOUT: 30,
-                        }
-                    )
+        with (
+            patch.object(flow, "async_set_unique_id", new_callable=AsyncMock),
+            patch.object(flow, "_abort_if_unique_id_configured"),
+            patch.object(flow, "async_create_entry") as mock_create,
+        ):
+            mock_create.return_value = {"type": "create_entry"}
+            await flow.async_step_user(
+                user_input={
+                    CONF_POLL_INTERVAL: 60,
+                    CONF_OCCUPANCY_TIMEOUT: 30,
+                }
+            )
 
         call_kwargs = mock_create.call_args[1]
         assert call_kwargs["data"][CONF_POLL_INTERVAL] == 60

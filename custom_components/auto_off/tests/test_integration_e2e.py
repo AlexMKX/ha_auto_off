@@ -196,7 +196,7 @@ class TestAutoOffServicesValidation:
 
     async def test_set_group_empty_targets(self, ha_instance):
         """Empty targets must be rejected (validated by GroupConfig)."""
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017 - HA service call raises untyped errors
             await ha_instance.call_service(
                 "auto_off",
                 "set_group",
@@ -208,7 +208,7 @@ class TestAutoOffServicesValidation:
             )
 
     async def test_set_group_requires_sensor_source(self, ha_instance):
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017 - HA service call raises untyped errors
             await ha_instance.call_service(
                 "auto_off",
                 "set_group",
