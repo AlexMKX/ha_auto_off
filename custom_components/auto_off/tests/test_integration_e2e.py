@@ -265,32 +265,8 @@ class TestAutoOffIntegrationE2E:
         )
 
 
-@pytest.mark.asyncio
-class TestAutoOffServicesValidation:
-    """Test service validation."""
-
-    async def test_set_group_empty_targets(self, ha_instance):
-        """Empty targets must be rejected (validated by GroupConfig)."""
-        with pytest.raises(Exception):  # noqa: B017 - HA service call raises untyped errors
-            await ha_instance.call_service(
-                "auto_off",
-                "set_group",
-                {
-                    "group_name": "invalid_group",
-                    "targets": [],
-                    "sensors": ["binary_sensor.test_motion"],
-                },
-            )
-
-    async def test_set_group_requires_sensor_source(self, ha_instance):
-        with pytest.raises(Exception):  # noqa: B017 - HA service call raises untyped errors
-            await ha_instance.call_service(
-                "auto_off",
-                "set_group",
-                {
-                    "group_name": "incomplete_group",
-                    "targets": ["light.test_light"],
-                    "sensors": [],
-                    "sensor_templates": [],
-                },
-            )
+# NOTE: service input validation (empty targets, missing sensor source, etc.)
+# is covered by unit tests in `test_set_group_service.py`. Those tests assert
+# the observable contract: handler returns without calling
+# `manager.set_group` on invalid payloads. Re-running the same checks over
+# HTTP here would be duplicate coverage with no additional signal.
