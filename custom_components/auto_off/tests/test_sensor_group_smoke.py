@@ -25,9 +25,5 @@ async def test_sensor_group_state_logging_no_attribute_error(caplog):
     )
     sg = SensorGroup(sg_hass, "g1", cfg, on_deadline_change=None)
     with caplog.at_level(logging.DEBUG, logger="custom_components.auto_off.auto_off"):
-        await sg._log_state_transitions(
-            {"target_on": False, "all_sensors_off": True, "human_deadline": "None"}
-        )
-    assert any(
-        "g1" in r.message for r in caplog.records
-    ), "Expected debug log containing group_id 'g1'"
+        await sg._log_state_transitions({"target_on": False, "all_sensors_off": True, "human_deadline": "None"})
+    assert any("g1" in r.message for r in caplog.records), "Expected debug log containing group_id 'g1'"

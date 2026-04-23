@@ -111,9 +111,7 @@ class TestAutoOffIntegrationE2E:
 
         # Verify light is on (motion is on, so it should stay on)
         state = await ha_instance.get_state("light.test_light_2")
-        assert (
-            state["state"] == "on"
-        ), f"Expected light to be on, but it's {state['state']}"
+        assert state["state"] == "on", f"Expected light to be on, but it's {state['state']}"
 
         # Turn off motion sensor (should trigger auto-off with delay 0)
         await ha_instance.call_service(
@@ -129,9 +127,7 @@ class TestAutoOffIntegrationE2E:
 
         # Light should be off now
         state = await ha_instance.get_state("light.test_light_2")
-        assert (
-            state["state"] == "off"
-        ), f"Expected light to be off, but it's {state['state']}"
+        assert state["state"] == "off", f"Expected light to be off, but it's {state['state']}"
 
     async def test_delete_group_service(self, ha_instance):
         """Test the delete_group service removes a group."""
@@ -160,9 +156,7 @@ class TestAutoOffIntegrationE2E:
 
         # Verify group is deleted (deadline sensor should be gone)
         try:
-            state = await ha_instance.get_state(
-                "sensor.auto_off_group_to_delete_deadline"
-            )
+            state = await ha_instance.get_state("sensor.auto_off_group_to_delete_deadline")
             assert state is None or state.get("state") == "unavailable"
         except Exception:
             pass  # Entity not found - expected
@@ -267,8 +261,7 @@ class TestAutoOffIntegrationE2E:
         state = await ha_instance.get_state("input_boolean.late_target_state")
         assert state is not None
         assert state["state"] == "off", (
-            f"Expected late_target_state to be 'off' after auto-off timer, "
-            f"got: {state['state']}"
+            f"Expected late_target_state to be 'off' after auto-off timer, " f"got: {state['state']}"
         )
 
 
