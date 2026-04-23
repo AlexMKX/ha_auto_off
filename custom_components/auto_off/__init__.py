@@ -21,6 +21,7 @@ from .const import (
     PLATFORMS,
     SERVICE_DELETE_GROUP,
     SERVICE_SET_GROUP,
+    VERSION,
 )
 from .integration_manager import IntegrationManager
 
@@ -52,6 +53,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     await _async_register_services(hass, entry)
+
+    # Refresh sw_version on existing devices so the UI shows the current
+    # release after upgrade.  HA only records DeviceInfo fields on device
+    # creation, so a field like sw_version becomes stale on upgrades unless
+    # we explicitly push it to the registry here.
+    dev_reg = dr.async_get(hass)
+    for device in dr.async_entries_for_config_entry(dev_reg, entry.entry_id):
+        if device.sw_version == VERSION:
+            continue
+        dev_reg.async_update_device(device.id, sw_version=VERSION)
 
     return True
 

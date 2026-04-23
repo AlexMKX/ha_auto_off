@@ -9,7 +9,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import DOMAIN, VERSION
 
 if TYPE_CHECKING:
     from .integration_manager import IntegrationManager
@@ -59,7 +59,7 @@ class DeadlineSensorEntity(SensorEntity):
             name=f"Auto Off: {self._group_name}",
             manufacturer="Auto Off",
             model="Sensor Group",
-            sw_version="1.0",
+            sw_version=VERSION,
         )
 
     @property
