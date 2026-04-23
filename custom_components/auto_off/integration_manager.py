@@ -177,14 +177,16 @@ class IntegrationManager:
         desired_domains = set(desired.keys())
 
         # Remove domains that are no longer present
-        ent_reg = er.async_get(self.hass)
-        for gone_domain in current_domains - desired_domains:
-            key = (group_name, gone_domain)
-            entity = self._targets_group_entities.pop(key, None)
-            if entity is None:
-                continue
-            entity_id = targets_group_entity_id(gone_domain, group_name)
-            ent_reg.async_remove(entity_id)
+        gone_domains = current_domains - desired_domains
+        if gone_domains:
+            ent_reg = er.async_get(self.hass)
+            for gone_domain in gone_domains:
+                key = (group_name, gone_domain)
+                entity = self._targets_group_entities.pop(key, None)
+                if entity is None:
+                    continue
+                entity_id = targets_group_entity_id(gone_domain, group_name)
+                ent_reg.async_remove(entity_id)
 
         # Add / update domains that should exist
         for domain, ids in desired.items():

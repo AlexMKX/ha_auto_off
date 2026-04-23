@@ -232,3 +232,53 @@ class TestUpdateGroupConfigWritesState:
         )
 
         mock_entity.async_write_ha_state.assert_called()
+
+
+class TestGroupEntityHelpers:
+    async def test_get_group_config_returns_parsed(self, hass, config_entry):
+        """get_group_config materialises stored dict as GroupConfig."""
+        config_entry.data = {
+            "poll_interval": 15,
+            "groups": {
+                "k": {
+                    "targets": ["light.a", "switch.b"],
+                    "sensors": ["binary_sensor.m"],
+                    "sensor_templates": [],
+                    "delay": 5,
+                }
+            },
+        }
+        manager = IntegrationManager(hass, config_entry)
+        cfg = manager.get_group_config("k")
+        assert cfg is not None
+        assert cfg.targets == ["light.a", "switch.b"]
+        assert cfg.sensors == ["binary_sensor.m"]
+
+    async def test_get_group_config_unknown(self, hass, config_entry):
+        config_entry.data = {"poll_interval": 15, "groups": {}}
+        manager = IntegrationManager(hass, config_entry)
+        assert manager.get_group_config("nope") is None
+
+    async def test_get_group_targets_by_domain_buckets(self, hass, config_entry):
+        config_entry.data = {
+            "poll_interval": 15,
+            "groups": {
+                "k": {
+                    "targets": [
+                        "light.a",
+                        "switch.b",
+                        "light.c",
+                        "scene.evening",  # non-groupable, dropped
+                    ],
+                    "sensors": ["binary_sensor.m"],
+                    "sensor_templates": [],
+                    "delay": 0,
+                }
+            },
+        }
+        manager = IntegrationManager(hass, config_entry)
+        result = manager.get_group_targets_by_domain("k")
+        assert result == {
+            "light": ["light.a", "light.c"],
+            "switch": ["switch.b"],
+        }
