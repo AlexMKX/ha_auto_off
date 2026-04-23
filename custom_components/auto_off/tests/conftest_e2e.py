@@ -10,7 +10,6 @@ import contextlib
 import os
 
 import aiohttp
-import pytest
 import pytest_asyncio
 
 # ha-test-kit exports these env vars before running pytest

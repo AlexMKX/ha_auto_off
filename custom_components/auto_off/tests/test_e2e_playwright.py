@@ -7,7 +7,6 @@ import asyncio
 import os
 
 import pytest
-from playwright.async_api import Page, expect
 
 pytestmark = pytest.mark.docker_e2e
 

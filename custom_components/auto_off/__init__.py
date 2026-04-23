@@ -7,7 +7,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers import entity_registry as er
 from pydantic import ValidationError
 
 from .auto_off import GroupConfig
@@ -46,8 +45,6 @@ SERVICE_DELETE_GROUP_SCHEMA = vol.Schema(
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Auto Off from a config entry."""
-    await _async_cleanup_legacy_occupancy(hass, entry)
-
     manager = IntegrationManager(hass, entry)
     hass.data[DOMAIN] = manager
     await manager.async_initialize()
@@ -57,54 +54,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await _async_register_services(hass, entry)
 
     return True
-
-
-async def _async_cleanup_legacy_occupancy(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Remove legacy occupancy entities and foreign-device references left by
-    the pre-split auto_off integration (versions < 3).
-
-    Before the door_occupancy split, auto_off created binary_sensor.*_occupancy
-    entities and attached its config_entry_id to the source devices.  Those
-    artefacts remain in the registries after the migration and confuse HA: it
-    sees orphaned entities and may offer to delete the foreign devices that
-    auto_off no longer owns.
-
-    Safe to run on every setup; does nothing when there are no legacy artefacts.
-    """
-    ent_reg = er.async_get(hass)
-    dev_reg = dr.async_get(hass)
-
-    # --- 1. Remove legacy occupancy entities from entity registry ---
-    legacy_entity_ids = [
-        entity.entity_id
-        for entity in er.async_entries_for_config_entry(ent_reg, entry.entry_id)
-        if "occupancy" in entity.entity_id
-    ]
-    for entity_id in legacy_entity_ids:
-        _LOGGER.info("Removing legacy occupancy entity from registry: %s", entity_id)
-        ent_reg.async_remove(entity_id)
-
-    # --- 2. Remove auto_off config_entry_id from foreign devices ---
-    # Foreign devices are those that don't have an (DOMAIN, ...) identifier
-    # (i.e. they are owned by another integration, not by auto_off itself).
-    for device in list(dev_reg.devices.values()):
-        if entry.entry_id not in device.config_entries:
-            continue
-        is_own_device = any(ident[0] == DOMAIN for ident in device.identifiers)
-        if is_own_device:
-            continue
-        _LOGGER.info(
-            "Removing auto_off config_entry reference from foreign device '%s' (%s)",
-            device.name,
-            device.id,
-        )
-        dev_reg.async_update_device(device.id, remove_config_entry_id=entry.entry_id)
-
-    if legacy_entity_ids:
-        _LOGGER.info(
-            "Legacy occupancy cleanup: removed %d entity registry entries",
-            len(legacy_entity_ids),
-        )
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -125,19 +74,15 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Handle config entry migration for auto_off.
 
-    v1 → v2: structured group fields (automatic, data shape unchanged)
-    v2 → v3: no data change needed; occupancy sensors moved to door_occupancy
-              integration; legacy entity/device references cleaned up on next
-              async_setup_entry call via _async_cleanup_legacy_occupancy.
+    v1 → v2: structured group fields (automatic, data shape unchanged).
+    v2 → v3: no data change needed; only version bump.
     """
     if entry.version >= 3:
         return True
 
     if entry.version == 2:
         # v2 data already uses the same structured format as v3.
-        # The only difference is the version number.  Bump it so that
-        # async_setup_entry proceeds and _async_cleanup_legacy_occupancy
-        # can remove the orphaned occupancy entities from the registries.
+        # The only difference is the version number.
         _LOGGER.info("Migrating auto_off config entry from version 2 to 3 (data shape unchanged)")
         hass.config_entries.async_update_entry(entry, version=3)
         return True

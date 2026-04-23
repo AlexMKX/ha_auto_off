@@ -3,11 +3,9 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from homeassistant import config_entries
-from homeassistant.data_entry_flow import FlowResultType
 
-from custom_components.auto_off.config_flow import AutoOffConfigFlow, AutoOffOptionsFlow
-from custom_components.auto_off.const import CONF_GROUPS, CONF_POLL_INTERVAL, DOMAIN
+from custom_components.auto_off.config_flow import AutoOffConfigFlow
+from custom_components.auto_off.const import CONF_GROUPS, CONF_POLL_INTERVAL
 
 
 class TestAutoOffConfigFlow:
