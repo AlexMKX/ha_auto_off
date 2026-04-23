@@ -1,0 +1,56 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="black" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+  <!-- Белый контур для корпуса -->
+  <rect x="13" y="16" width="38" height="32" rx="8" fill="none" stroke="white" stroke-width="2"/>
+  <!-- Корпус выключателя -->
+  <rect x="13" y="16" width="38" height="32" rx="8" fill="none" stroke="black" stroke-width="1"/>
+  <!-- Белый контур для рычага -->
+  <line x1="32" y1="40" x2="46" y2="24" stroke="white" stroke-width="2"/>
+  <!-- Рычаг выключателя -->
+  <line x1="32" y1="40" x2="46" y2="24" stroke="black" stroke-width="1"/>
+  <!-- Ручка на рычаге (белый контур) -->
+  <rect x="44" y="21" width="8" height="6" rx="2" transform="rotate(-40 44 21)" fill="white" stroke="white" stroke-width="2"/>
+  <!-- Ручка на рычаге (чёрная) -->
+  <rect x="45.2" y="22.2" width="5.6" height="3.6" rx="1.2" transform="rotate(-40 45.2 22.2)" fill="black" stroke="black" stroke-width="1"/>
+  <!-- Белый контур для шарнира -->
+  <circle cx="32" cy="40" r="3.5" fill="white"/>
+  <!-- Шарнир -->
+  <circle cx="32" cy="40" r="2.5" fill="black"/>
+  <!-- Нормальная шестерёнка -->
+  <g>
+    <!-- Белый контур основы -->
+    <circle cx="50" cy="50" r="5.3" fill="white" stroke="white" stroke-width="2"/>
+    <!-- Зубцы (белый контур) -->
+    <g fill="white" stroke="white" stroke-width="2">
+      <!-- 8 зубцов -->
+      <rect x="49" y="42.7" width="2" height="2.3" />
+      <rect x="49" y="55" width="2" height="2.3" />
+      <rect x="42.7" y="49" width="2.3" height="2" />
+      <rect x="55" y="49" width="2.3" height="2" />
+      <rect x="44.2" y="44.2" width="2.3" height="2.3" transform="rotate(45 45.35 45.35)"/>
+      <rect x="52.5" y="44.2" width="2.3" height="2.3" transform="rotate(45 53.65 45.35)"/>
+      <rect x="44.2" y="52.5" width="2.3" height="2.3" transform="rotate(45 45.35 53.65)"/>
+      <rect x="52.5" y="52.5" width="2.3" height="2.3" transform="rotate(45 53.65 53.65)"/>
+    </g>
+    <!-- Основа шестерёнки -->
+    <circle cx="50" cy="50" r="4.7" fill="white" stroke="black" stroke-width="1"/>
+    <!-- Зубцы (чёрные) -->
+    <g fill="black" stroke="black" stroke-width="0.5">
+      <rect x="49" y="42.7" width="2" height="2.3" />
+      <rect x="49" y="55" width="2" height="2.3" />
+      <rect x="42.7" y="49" width="2.3" height="2" />
+      <rect x="55" y="49" width="2.3" height="2" />
+      <rect x="44.2" y="44.2" width="2.3" height="2.3" transform="rotate(45 45.35 45.35)"/>
+      <rect x="52.5" y="44.2" width="2.3" height="2.3" transform="rotate(45 53.65 45.35)"/>
+      <rect x="44.2" y="52.5" width="2.3" height="2.3" transform="rotate(45 45.35 53.65)"/>
+      <rect x="52.5" y="52.5" width="2.3" height="2.3" transform="rotate(45 53.65 53.65)"/>
+    </g>
+    <!-- Центральное отверстие -->
+    <circle cx="50" cy="50" r="1.7" fill="none" stroke="black" stroke-width="1"/>
+  </g>
+  <!-- Робот: глаза -->
+  <circle cx="23" cy="25" r="2" fill="black"/>
+  <circle cx="41" cy="25" r="2" fill="black"/>
+  <!-- Робот: антенна -->
+  <line x1="32" y1="16" x2="32" y2="10" stroke="black" stroke-width="1"/>
+  <circle cx="32" cy="8.5" r="1.2" fill="black"/>
+</svg> 

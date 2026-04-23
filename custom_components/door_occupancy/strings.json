@@ -1,0 +1,28 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Door Occupancy Setup",
+        "description": "Configure discovery polling and occupancy pulse duration.",
+        "data": {
+          "poll_interval": "Discovery interval (seconds)",
+          "occupancy_timeout": "Occupancy pulse duration (seconds)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Door Occupancy is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Door Occupancy Options",
+        "data": {
+          "poll_interval": "Discovery interval (seconds)",
+          "occupancy_timeout": "Occupancy pulse duration (seconds)"
+        }
+      }
+    }
+  }
+}
