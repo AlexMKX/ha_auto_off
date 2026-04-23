@@ -32,7 +32,7 @@ class DoorOccupancyManager:
         self._async_add_entities: AddEntitiesCallback | None = None
         self._remove_listener = None
 
-    async def _find_sources(self) -> list[str]:
+    def _find_sources(self) -> list[str]:
         entities: set[str] = set()
         for state in self.hass.states.async_all(["binary_sensor"]):
             if state.attributes.get("device_class") == "door":
@@ -58,7 +58,7 @@ class DoorOccupancyManager:
     async def _discover_and_add_sensors(self) -> None:
         if self._async_add_entities is None:
             return
-        sources = await self._find_sources()
+        sources = self._find_sources()
         new_sensors = []
         for source_id in sources:
             if source_id in self._sensors:

@@ -27,7 +27,6 @@ class TestDoorOccupancyConfigFlow:
         flow.hass.config_entries = MagicMock()
         return flow
 
-    @pytest.mark.asyncio
     async def test_step_user_shows_form_when_no_input(self, flow):
         with patch.object(flow, "async_set_unique_id", new_callable=AsyncMock):
             with patch.object(flow, "_abort_if_unique_id_configured"):
@@ -38,7 +37,6 @@ class TestDoorOccupancyConfigFlow:
         assert CONF_POLL_INTERVAL in result["data_schema"].schema
         assert CONF_OCCUPANCY_TIMEOUT in result["data_schema"].schema
 
-    @pytest.mark.asyncio
     async def test_step_user_creates_entry_with_defaults(self, flow):
         with patch.object(flow, "async_set_unique_id", new_callable=AsyncMock):
             with patch.object(flow, "_abort_if_unique_id_configured"):
@@ -51,7 +49,6 @@ class TestDoorOccupancyConfigFlow:
         assert call_kwargs["data"][CONF_POLL_INTERVAL] == DEFAULT_POLL_INTERVAL
         assert call_kwargs["data"][CONF_OCCUPANCY_TIMEOUT] == DEFAULT_OCCUPANCY_TIMEOUT
 
-    @pytest.mark.asyncio
     async def test_step_user_creates_entry_with_user_values(self, flow):
         with patch.object(flow, "async_set_unique_id", new_callable=AsyncMock):
             with patch.object(flow, "_abort_if_unique_id_configured"):
@@ -72,8 +69,41 @@ class TestDoorOccupancyConfigFlow:
 class TestDoorOccupancyOptionsFlow:
     """Options flow for reconfiguration."""
 
-    @pytest.mark.skip(reason="Requires full HA test harness with frame helper")
-    @pytest.mark.asyncio
-    async def test_init_step_updates_entry(self):
-        """Covered by e2e tests; mirrors AutoOffOptionsFlow pattern."""
-        pass
+    @pytest.fixture
+    def options_flow(self):
+        flow = DoorOccupancyOptionsFlow()
+        mock_entry = MagicMock()
+        mock_entry.data = {
+            CONF_POLL_INTERVAL: 30,
+            CONF_OCCUPANCY_TIMEOUT: 15,
+        }
+        # config_entry property resolves via hass.config_entries.async_get_known_entry.
+        # Set handler (used as config_entry_id) and wire up the mock.
+        flow.handler = "test_entry_id"
+        flow.hass = MagicMock()
+        flow.hass.config_entries.async_get_known_entry.return_value = mock_entry
+        return flow
+
+    async def test_init_step_shows_form_when_no_input(self, options_flow):
+        result = await options_flow.async_step_init(user_input=None)
+        assert result["type"] == "form"
+        assert result["step_id"] == "init"
+        assert CONF_POLL_INTERVAL in result["data_schema"].schema
+        assert CONF_OCCUPANCY_TIMEOUT in result["data_schema"].schema
+
+    async def test_init_step_updates_entry_data(self, options_flow):
+        with patch.object(options_flow, "async_create_entry") as mock_create:
+            mock_create.return_value = {"type": "create_entry"}
+            await options_flow.async_step_init(
+                user_input={
+                    CONF_POLL_INTERVAL: 60,
+                    CONF_OCCUPANCY_TIMEOUT: 30,
+                }
+            )
+
+        options_flow.hass.config_entries.async_update_entry.assert_called_once()
+        call_kwargs = options_flow.hass.config_entries.async_update_entry.call_args
+        updated_data = call_kwargs[1]["data"]
+        assert updated_data[CONF_POLL_INTERVAL] == 60
+        assert updated_data[CONF_OCCUPANCY_TIMEOUT] == 30
+        mock_create.assert_called_once_with(title="", data={})

@@ -58,6 +58,7 @@ class DoorOccupancyBinarySensor(AutoResetBinarySensor):
         self._unsub = None
 
     async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
         # Bind this entity's config entry to the source entity's device so
         # the occupancy sensor shows up on the same HA device card.
         ent_reg = entity_registry.async_get(self.hass)

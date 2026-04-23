@@ -27,7 +27,6 @@ class TestDoorOccupancyManager:
     def manager(self, hass, config_entry):
         return DoorOccupancyManager(hass, config_entry, occupancy_timeout=15)
 
-    @pytest.mark.asyncio
     async def test_finds_door_binary_sensors_locks_and_covers(
         self, manager, hass
     ):
@@ -45,7 +44,7 @@ class TestDoorOccupancyManager:
             return []
 
         hass.states.async_all.side_effect = fake_all
-        found = await manager._find_sources()
+        found = manager._find_sources()
 
         assert set(found) == {
             "binary_sensor.front_door",
@@ -53,7 +52,6 @@ class TestDoorOccupancyManager:
             "cover.garage",
         }
 
-    @pytest.mark.asyncio
     async def test_discovery_adds_one_sensor_per_source(self, manager, hass):
         def fake_all(domains):
             if domains == ["binary_sensor"]:
@@ -73,7 +71,6 @@ class TestDoorOccupancyManager:
         sensors = add_entities.call_args[0][0]
         assert len(sensors) == 2
 
-    @pytest.mark.asyncio
     async def test_discovery_is_idempotent(self, manager, hass):
         def fake_all(domains):
             if domains == ["binary_sensor"]:
@@ -92,7 +89,6 @@ class TestDoorOccupancyManager:
         await manager._discover_and_add_sensors()
         assert add_entities.call_count == 1
 
-    @pytest.mark.asyncio
     async def test_unload_cancels_periodic_listener(self, manager):
         fake_unsub = MagicMock()
         manager._remove_listener = fake_unsub

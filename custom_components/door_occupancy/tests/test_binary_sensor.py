@@ -47,7 +47,6 @@ class TestDoorOccupancyBinarySensor:
         assert sensor._attr_is_on is False
         assert sensor._attr_should_poll is False
 
-    @pytest.mark.asyncio
     async def test_added_to_hass_subscribes_and_reads_initial_state(
         self, hass, sensor, source_state_closed
     ):
@@ -70,7 +69,6 @@ class TestDoorOccupancyBinarySensor:
         assert sensor._prev_state == "off"
         assert sensor._attr_is_on is False
 
-    @pytest.mark.asyncio
     async def test_first_state_change_triggers_pulse(self, hass, sensor):
         """Regression: the first real state change must trigger pulse().
 
@@ -100,7 +98,6 @@ class TestDoorOccupancyBinarySensor:
         mock_pulse.assert_called_once()
         assert sensor._prev_state == "on"
 
-    @pytest.mark.asyncio
     async def test_unavailable_state_is_ignored(self, hass, sensor):
         with patch(
             "custom_components.door_occupancy.binary_sensor.async_track_state_change_event",
@@ -124,7 +121,6 @@ class TestDoorOccupancyBinarySensor:
 
         mock_pulse.assert_not_called()
 
-    @pytest.mark.asyncio
     async def test_same_state_is_not_a_pulse(self, hass, sensor):
         with patch(
             "custom_components.door_occupancy.binary_sensor.async_track_state_change_event",

@@ -70,6 +70,9 @@ class DoorOccupancyOptionsFlow(config_entries.OptionsFlow):
             new_data = dict(self.config_entry.data)
             new_data[CONF_POLL_INTERVAL] = user_input[CONF_POLL_INTERVAL]
             new_data[CONF_OCCUPANCY_TIMEOUT] = user_input[CONF_OCCUPANCY_TIMEOUT]
+            # TODO: call async_reload to apply new values to the running manager.
+            # Currently matches auto_off OptionsFlow pattern (data updated in-place,
+            # takes effect on next HA restart). Both integrations need this fixed.
             self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
             return self.async_create_entry(title="", data={})
 
