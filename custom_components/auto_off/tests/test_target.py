@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -25,8 +24,7 @@ class TestTargetInit:
         assert t.entity_id == "light.kitchen"
         assert t._skip is False
 
-    def test_marks_invalid_entity_id_as_skip(self, target_hass, caplog):
-        caplog.set_level(logging.DEBUG, logger="custom_components.auto_off.auto_off")
+    def test_marks_invalid_entity_id_as_skip(self, target_hass):
         t = Target(target_hass, "not-valid", AsyncMock())
         assert t.entity_id == "not-valid"
         assert t._skip is True
