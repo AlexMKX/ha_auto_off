@@ -342,11 +342,14 @@ class SensorGroup:
         group_id: str,
         config: GroupConfig,
         on_deadline_change: Callable[[str, str | None], None] | None = None,
+        *,
+        manager: "Any | None" = None,
     ):
         self.hass = hass
         self.group_id = group_id
         self._config = config  # immutable
         self._on_deadline_change = on_deadline_change
+        self._manager = manager
         self._sensors: list[Sensor] = []
         self._targets: list[Target] = []
         self._timer: asyncio.TimerHandle | None = None
@@ -614,8 +617,42 @@ class SensorGroup:
         self._timer_deadline = None
         self._notify_deadline_change()
 
+        # Primary path: one <domain>.turn_off call per groupable domain.
+        dispatched_domains: set[str] = set()
+        if self._manager is not None:
+            for entity_id in self._manager.get_group_member_group_entity_ids(
+                self.group_id
+            ):
+                domain = entity_id.split(".", 1)[0]
+                dispatched_domains.add(domain)
+                try:
+                    await self.hass.services.async_call(
+                        domain,
+                        "turn_off",
+                        {"entity_id": entity_id},
+                        blocking=False,
+                    )
+                except Exception as exc:  # noqa: BLE001 - never fail the whole expiry
+                    _LOGGER.warning(
+                        "[Group %s] Group turn_off on %s failed: %s",
+                        self.group_id,
+                        entity_id,
+                        exc,
+                    )
+
+        # Fallback: per-entity for targets whose domain has no group platform.
+        from .const import GROUPABLE_DOMAINS  # local import to avoid cycle
+
         tasks = []
         for target in self._targets:
+            entity_id = getattr(target, "entity_id", "")
+            if "." not in entity_id:
+                continue
+            domain = entity_id.split(".", 1)[0]
+            if domain in dispatched_domains:
+                continue  # handled by group turn_off
+            if domain in GROUPABLE_DOMAINS:
+                continue  # should already be covered; skip defensively
             tasks.append(target.turn_off())
         if tasks:
             await asyncio.gather(*tasks)
@@ -665,10 +702,12 @@ class AutoOffManager:
         config: dict[str, GroupConfig],
         *,
         on_deadline_change: Callable[[str, str | None], None] | None = None,
+        integration_manager: "Any | None" = None,
     ) -> None:
         self.hass = hass
         self.config = config
         self._on_deadline_change = on_deadline_change
+        self._integration_manager = integration_manager
         self._groups: dict[str, SensorGroup] = {}
         self._tasks: list[Any] = []
 
@@ -688,6 +727,7 @@ class AutoOffManager:
                     group_id,
                     group_config,
                     on_deadline_change=self._on_deadline_change,
+                    manager=self._integration_manager,
                 )
                 _LOGGER.info(
                     "Initialized auto-off group '%s' with %d sensors and %d targets",

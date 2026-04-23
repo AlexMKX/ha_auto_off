@@ -62,6 +62,7 @@ class IntegrationManager:
             hass,
             group_configs,
             on_deadline_change=self._on_deadline_change,
+            integration_manager=self,
         )
         self._lock = asyncio.Lock()
         self._remove_listener = None
