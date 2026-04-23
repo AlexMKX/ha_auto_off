@@ -17,6 +17,9 @@ Fields:
 
 - `group_name` (string, required): unique name of the group.
 - `targets` (list of entity ids, required): entities to turn off.
+  Only concrete entity ids in `domain.object_id` form are accepted.
+  Jinja templates are **not** supported here; invalid items produce a WARNING
+  in the HA log and are skipped at turn-off time.
 - `sensors` (list of `binary_sensor.*` entity ids, optional): activity sensors.
 - `sensor_templates` (list of Jinja strings, optional): templates rendered
   to bool. Treated identically to `sensors`.
@@ -50,7 +53,11 @@ Fields:
 Device `Auto Off: <group_name>` with:
 
 - `sensor.auto_off_<group_name>_deadline` — current deadline (human-readable)
-  with a `deadline_iso` attribute.
+  with a `deadline_iso` attribute. The sensor also exposes the full group
+  configuration as extra state attributes: `targets` (list of entity ids),
+  `sensors` (list of binary sensor entity ids), and `sensor_templates` (list
+  of raw Jinja strings). Open the **more-info dialog** for this sensor from
+  the device page to inspect the current group configuration.
 - `text.auto_off_<group_name>_delay_minutes` — editable delay (supports
   templates).
 

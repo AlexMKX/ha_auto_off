@@ -78,3 +78,9 @@ Starting with release `2604231655`, the integration is split. This is a
    If you previously embedded Jinja templates in the sensor list
    (detected by the presence of `{{`), move those into the new
    `sensor_templates` field.
+
+   Note: the `targets` field accepts **only concrete entity ids**
+   (`domain.object_id`). Jinja templates in `targets` are no longer
+   supported. If you previously used template targets, replace them with
+   the resolved entity ids and call `auto_off.set_group` with the updated
+   payload.
