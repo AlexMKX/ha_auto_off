@@ -78,3 +78,11 @@ class TestGroupConfigTargetSyntax:
         )
         warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
         assert warnings == []
+
+    def test_invalid_targets_survive_model_dump(self):
+        cfg = GroupConfig(
+            targets=["light.good", "bad id"],
+            sensors=["binary_sensor.motion"],
+        )
+        dumped = cfg.model_dump()
+        assert dumped["targets"] == ["light.good", "bad id"]
