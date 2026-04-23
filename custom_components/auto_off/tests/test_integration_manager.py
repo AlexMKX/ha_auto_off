@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from custom_components.auto_off.auto_off import GroupConfig
 from custom_components.auto_off.integration_manager import (
     IntegrationManager,
     parse_group_configs,
@@ -161,9 +162,6 @@ class TestGetGroupConfig:
             },
         }
         mgr = IntegrationManager(hass, config_entry)
-        # Inject a SensorGroup-like stub so get_group_config can read it.
-        from unittest.mock import MagicMock
-        from custom_components.auto_off.auto_off import GroupConfig
         stub_group = MagicMock()
         stub_group._config = GroupConfig(
             targets=["light.kitchen"],
@@ -176,3 +174,37 @@ class TestGetGroupConfig:
     def test_returns_none_for_unknown_group(self, hass, config_entry):
         mgr = IntegrationManager(hass, config_entry)
         assert mgr.get_group_config("missing") is None
+
+
+class TestUpdateGroupConfigWritesState:
+    async def test_async_write_ha_state_called_after_update(self, hass, config_entry):
+        config_entry.data = {
+            "poll_interval": 15,
+            "groups": {
+                "kitchen": {
+                    "targets": ["light.kitchen"],
+                    "sensors": ["binary_sensor.motion"],
+                    "delay": 5,
+                }
+            },
+        }
+        mgr = IntegrationManager(hass, config_entry)
+
+        mock_entity = MagicMock()
+        mock_entity.async_write_ha_state = MagicMock()
+        mgr._deadline_entities["kitchen"] = mock_entity
+
+        # Stub out auto_off.async_init_groups so set_group doesn't actually
+        # try to build SensorGroup with a real hass.
+        mgr.auto_off.async_init_groups = AsyncMock()
+
+        await mgr.update_group_config(
+            "kitchen",
+            {
+                "targets": ["light.kitchen", "light.extra"],
+                "sensors": ["binary_sensor.motion"],
+                "delay": 5,
+            },
+        )
+
+        mock_entity.async_write_ha_state.assert_called()
