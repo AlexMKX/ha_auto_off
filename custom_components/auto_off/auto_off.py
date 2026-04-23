@@ -4,10 +4,10 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from homeassistant.core import HomeAssistant, State
+from homeassistant.core import HomeAssistant, State, valid_entity_id
 from homeassistant.helpers.event import async_track_state_change_event, async_track_template
 from homeassistant.helpers.template import Template
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -24,6 +24,23 @@ class GroupConfig(BaseModel):
     sensors: list[str] = []
     sensor_templates: list[str] = []
     delay: int | str = 0
+
+    @field_validator("targets")
+    @classmethod
+    def _warn_on_non_entity_targets(cls, value: list[str]) -> list[str]:
+        """Warn on syntactically invalid entity ids in `targets`.
+
+        Invalid items are kept in the list so they remain visible in the UI
+        attribute and are skipped at turn_off time.
+        """
+        for item in value:
+            if not isinstance(item, str) or not valid_entity_id(item):
+                _LOGGER.warning(
+                    "GroupConfig: target %r is not a valid entity_id, "
+                    "it will be skipped at turn_off",
+                    item,
+                )
+        return value
 
     @model_validator(mode="after")
     def _require_targets_and_sensor_source(self) -> "GroupConfig":

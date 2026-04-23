@@ -44,3 +44,38 @@ class TestGroupConfig:
             delay=template,
         )
         assert cfg.delay == template
+
+
+import logging
+
+
+class TestGroupConfigTargetSyntax:
+    def test_warns_but_keeps_invalid_target_syntax(self, caplog):
+        caplog.set_level(logging.WARNING, logger="custom_components.auto_off.auto_off")
+        cfg = GroupConfig(
+            targets=["light.good", "not-an-entity-id"],
+            sensors=["binary_sensor.motion"],
+        )
+        assert cfg.targets == ["light.good", "not-an-entity-id"]
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert any("not-an-entity-id" in r.message for r in warnings)
+
+    def test_warns_on_template_string_in_targets(self, caplog):
+        caplog.set_level(logging.WARNING, logger="custom_components.auto_off.auto_off")
+        template = "{{ states('light.x') }}"
+        cfg = GroupConfig(
+            targets=[template],
+            sensors=["binary_sensor.motion"],
+        )
+        assert cfg.targets == [template]
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert any(template in r.message for r in warnings)
+
+    def test_no_warning_for_all_valid_targets(self, caplog):
+        caplog.set_level(logging.WARNING, logger="custom_components.auto_off.auto_off")
+        GroupConfig(
+            targets=["light.a", "switch.b"],
+            sensors=["binary_sensor.motion"],
+        )
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert warnings == []
