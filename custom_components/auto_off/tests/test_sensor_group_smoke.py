@@ -28,6 +28,6 @@ async def test_sensor_group_state_logging_no_attribute_error(caplog):
         await sg._log_state_transitions(
             {"target_on": False, "all_sensors_off": True, "human_deadline": "None"}
         )
-    assert any("g1" in r.message for r in caplog.records), (
-        "Expected debug log containing group_id 'g1'"
-    )
+    assert any(
+        "g1" in r.message for r in caplog.records
+    ), "Expected debug log containing group_id 'g1'"

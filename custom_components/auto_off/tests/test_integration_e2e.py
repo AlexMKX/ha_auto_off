@@ -111,9 +111,9 @@ class TestAutoOffIntegrationE2E:
 
         # Verify light is on (motion is on, so it should stay on)
         state = await ha_instance.get_state("light.test_light_2")
-        assert state["state"] == "on", (
-            f"Expected light to be on, but it's {state['state']}"
-        )
+        assert (
+            state["state"] == "on"
+        ), f"Expected light to be on, but it's {state['state']}"
 
         # Turn off motion sensor (should trigger auto-off with delay 0)
         await ha_instance.call_service(
@@ -129,9 +129,9 @@ class TestAutoOffIntegrationE2E:
 
         # Light should be off now
         state = await ha_instance.get_state("light.test_light_2")
-        assert state["state"] == "off", (
-            f"Expected light to be off, but it's {state['state']}"
-        )
+        assert (
+            state["state"] == "off"
+        ), f"Expected light to be off, but it's {state['state']}"
 
     async def test_delete_group_service(self, ha_instance):
         """Test the delete_group service removes a group."""

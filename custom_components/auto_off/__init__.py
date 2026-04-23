@@ -31,8 +31,12 @@ SERVICE_SET_GROUP_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_GROUP_NAME): cv.string,
         vol.Required(CONF_TARGETS): vol.All(cv.ensure_list, [cv.entity_id]),
-        vol.Optional(CONF_SENSORS, default=list): vol.All(cv.ensure_list, [cv.entity_id]),
-        vol.Optional(CONF_SENSOR_TEMPLATES, default=list): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional(CONF_SENSORS, default=list): vol.All(
+            cv.ensure_list, [cv.entity_id]
+        ),
+        vol.Optional(CONF_SENSOR_TEMPLATES, default=list): vol.All(
+            cv.ensure_list, [cv.string]
+        ),
         vol.Optional(CONF_DELAY, default=0): vol.Any(int, cv.string),
     }
 )
@@ -59,7 +63,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-async def _async_cleanup_legacy_occupancy(hass: HomeAssistant, entry: ConfigEntry) -> None:
+async def _async_cleanup_legacy_occupancy(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> None:
     """Remove legacy occupancy entities and foreign-device references left by
     the pre-split auto_off integration (versions < 3).
 
@@ -102,7 +108,8 @@ async def _async_cleanup_legacy_occupancy(hass: HomeAssistant, entry: ConfigEntr
 
     if legacy_entity_ids:
         _LOGGER.info(
-            "Legacy occupancy cleanup: removed %d entity registry entries", len(legacy_entity_ids)
+            "Legacy occupancy cleanup: removed %d entity registry entries",
+            len(legacy_entity_ids),
         )
 
 
@@ -184,7 +191,9 @@ async def _async_register_services(hass: HomeAssistant, entry: ConfigEntry) -> N
             return
 
         await manager.set_group(group_name, config_dict, is_new_group)
-        _LOGGER.info("Group '%s' %s", group_name, "created" if is_new_group else "updated")
+        _LOGGER.info(
+            "Group '%s' %s", group_name, "created" if is_new_group else "updated"
+        )
 
     async def handle_delete_group(call: ServiceCall) -> None:
         """Delete an auto-off group."""
@@ -209,8 +218,15 @@ async def _async_register_services(hass: HomeAssistant, entry: ConfigEntry) -> N
         _LOGGER.info("Group '%s' deleted", group_name)
 
     # Register services
-    hass.services.async_register(DOMAIN, SERVICE_SET_GROUP, handle_set_group, schema=SERVICE_SET_GROUP_SCHEMA)
-    hass.services.async_register(DOMAIN, SERVICE_DELETE_GROUP, handle_delete_group, schema=SERVICE_DELETE_GROUP_SCHEMA)
+    hass.services.async_register(
+        DOMAIN, SERVICE_SET_GROUP, handle_set_group, schema=SERVICE_SET_GROUP_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_DELETE_GROUP,
+        handle_delete_group,
+        schema=SERVICE_DELETE_GROUP_SCHEMA,
+    )
 
 
 async def async_remove_config_entry_device(
