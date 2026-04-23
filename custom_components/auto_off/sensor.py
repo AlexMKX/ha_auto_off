@@ -1,7 +1,7 @@
 """Sensor entities for Auto Off group configuration."""
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -10,9 +10,6 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN, VERSION
-
-if TYPE_CHECKING:
-    from .integration_manager import IntegrationManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -40,13 +37,12 @@ class DeadlineSensorEntity(SensorEntity):
         hass: HomeAssistant,
         entry: ConfigEntry,
         group_name: str,
-        manager: "IntegrationManager",
+        manager: Any,
     ) -> None:
         """Initialize the deadline sensor entity."""
         self.hass = hass
         self._entry = entry
         self._group_name = group_name
-        self._manager = manager
         self._attr_unique_id = f"{DOMAIN}_{group_name}_deadline"
         self._attr_native_value = "—"
         self._deadline_iso: str | None = None
@@ -65,15 +61,7 @@ class DeadlineSensorEntity(SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
-        config = self._manager.get_group_config(self._group_name)
-        if config is None:
-            return {"deadline_iso": self._deadline_iso}
-        return {
-            "deadline_iso": self._deadline_iso,
-            "targets": list(config.targets),
-            "sensors": list(config.sensors),
-            "sensor_templates": list(config.sensor_templates),
-        }
+        return {"deadline_iso": self._deadline_iso}
 
     @callback
     def update_deadline(self, deadline_str: str | None) -> None:
