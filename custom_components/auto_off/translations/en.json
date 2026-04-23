@@ -23,6 +23,32 @@
       }
     }
   },
+  "entity": {
+    "binary_sensor": {
+      "sensors": { "name": "Sensors" }
+    },
+    "light": {
+      "targets_light": { "name": "Targets (Light)" }
+    },
+    "switch": {
+      "targets_switch": { "name": "Targets (Switch)" }
+    },
+    "fan": {
+      "targets_fan": { "name": "Targets (Fan)" }
+    },
+    "cover": {
+      "targets_cover": { "name": "Targets (Cover)" }
+    },
+    "media_player": {
+      "targets_media_player": { "name": "Targets (Media Player)" }
+    },
+    "lock": {
+      "targets_lock": { "name": "Targets (Lock)" }
+    },
+    "valve": {
+      "targets_valve": { "name": "Targets (Valve)" }
+    }
+  },
   "services": {
     "set_group": {
       "name": "Set Group",
