@@ -1,4 +1,5 @@
 """E2E tests for auto_off integration."""
+
 import asyncio
 
 import pytest
@@ -44,12 +45,16 @@ class TestAutoOffIntegrationE2E:
         # Wait for services to register
         await asyncio.sleep(2)
 
-        await ha_instance.call_service("auto_off", "set_group", {
-            "group_name": "test_group",
-            "targets": ["light.test_light"],
-            "sensors": ["binary_sensor.test_motion"],
-            "delay": 1,
-        })
+        await ha_instance.call_service(
+            "auto_off",
+            "set_group",
+            {
+                "group_name": "test_group",
+                "targets": ["light.test_light"],
+                "sensors": ["binary_sensor.test_motion"],
+                "delay": 1,
+            },
+        )
 
         # Wait for entity to be created
         await asyncio.sleep(2)
@@ -69,24 +74,36 @@ class TestAutoOffIntegrationE2E:
             await ha_instance.add_integration("auto_off", {"poll_interval": 15})
             await asyncio.sleep(2)
 
-        await ha_instance.call_service("auto_off", "set_group", {
-            "group_name": "test_auto_off_group",
-            "targets": ["light.test_light_2"],
-            "sensors": ["binary_sensor.test_motion_2"],
-            "delay": 0,
-        })
+        await ha_instance.call_service(
+            "auto_off",
+            "set_group",
+            {
+                "group_name": "test_auto_off_group",
+                "targets": ["light.test_light_2"],
+                "sensors": ["binary_sensor.test_motion_2"],
+                "delay": 0,
+            },
+        )
         await asyncio.sleep(3)
 
         # First, turn ON motion sensor (to prevent immediate auto-off)
-        await ha_instance.call_service("input_boolean", "turn_on", {
-            "entity_id": "input_boolean.test_motion_2_state",
-        })
+        await ha_instance.call_service(
+            "input_boolean",
+            "turn_on",
+            {
+                "entity_id": "input_boolean.test_motion_2_state",
+            },
+        )
         await asyncio.sleep(1)
 
         # Turn on the light
-        await ha_instance.call_service("input_boolean", "turn_on", {
-            "entity_id": "input_boolean.test_light_2_state",
-        })
+        await ha_instance.call_service(
+            "input_boolean",
+            "turn_on",
+            {
+                "entity_id": "input_boolean.test_light_2_state",
+            },
+        )
         await asyncio.sleep(1)
 
         # Verify light is on (motion is on, so it should stay on)
@@ -94,9 +111,13 @@ class TestAutoOffIntegrationE2E:
         assert state["state"] == "on", f"Expected light to be on, but it's {state['state']}"
 
         # Turn off motion sensor (should trigger auto-off with delay 0)
-        await ha_instance.call_service("input_boolean", "turn_off", {
-            "entity_id": "input_boolean.test_motion_2_state",
-        })
+        await ha_instance.call_service(
+            "input_boolean",
+            "turn_off",
+            {
+                "entity_id": "input_boolean.test_motion_2_state",
+            },
+        )
 
         # Wait for periodic worker to process (poll_interval + buffer)
         await asyncio.sleep(20)
@@ -108,18 +129,26 @@ class TestAutoOffIntegrationE2E:
     async def test_delete_group_service(self, ha_instance):
         """Test the delete_group service removes a group."""
         # First create a group
-        await ha_instance.call_service("auto_off", "set_group", {
-            "group_name": "group_to_delete",
-            "targets": ["light.test_light"],
-            "sensors": ["binary_sensor.test_motion"],
-            "delay": 5,
-        })
+        await ha_instance.call_service(
+            "auto_off",
+            "set_group",
+            {
+                "group_name": "group_to_delete",
+                "targets": ["light.test_light"],
+                "sensors": ["binary_sensor.test_motion"],
+                "delay": 5,
+            },
+        )
         await asyncio.sleep(2)
 
         # Delete the group
-        await ha_instance.call_service("auto_off", "delete_group", {
-            "group_name": "group_to_delete",
-        })
+        await ha_instance.call_service(
+            "auto_off",
+            "delete_group",
+            {
+                "group_name": "group_to_delete",
+            },
+        )
         await asyncio.sleep(2)
 
         # Verify group is deleted (deadline sensor should be gone)
@@ -132,21 +161,29 @@ class TestAutoOffIntegrationE2E:
     async def test_update_group_config(self, ha_instance):
         """Test updating an existing group's configuration."""
         # Create initial group
-        await ha_instance.call_service("auto_off", "set_group", {
-            "group_name": "update_test_group",
-            "targets": ["light.test_light"],
-            "sensors": ["binary_sensor.test_motion"],
-            "delay": 5,
-        })
+        await ha_instance.call_service(
+            "auto_off",
+            "set_group",
+            {
+                "group_name": "update_test_group",
+                "targets": ["light.test_light"],
+                "sensors": ["binary_sensor.test_motion"],
+                "delay": 5,
+            },
+        )
         await asyncio.sleep(2)
 
         # Update the group with new config
-        await ha_instance.call_service("auto_off", "set_group", {
-            "group_name": "update_test_group",
-            "targets": ["light.test_light", "light.test_light_2"],
-            "sensors": ["binary_sensor.test_motion", "binary_sensor.test_motion_2"],
-            "delay": 10,
-        })
+        await ha_instance.call_service(
+            "auto_off",
+            "set_group",
+            {
+                "group_name": "update_test_group",
+                "targets": ["light.test_light", "light.test_light_2"],
+                "sensors": ["binary_sensor.test_motion", "binary_sensor.test_motion_2"],
+                "delay": 10,
+            },
+        )
         await asyncio.sleep(2)
 
         # The group should be updated (we can't easily verify the internal state
@@ -160,17 +197,25 @@ class TestAutoOffServicesValidation:
     async def test_set_group_empty_targets(self, ha_instance):
         """Empty targets must be rejected (validated by GroupConfig)."""
         with pytest.raises(Exception):
-            await ha_instance.call_service("auto_off", "set_group", {
-                "group_name": "invalid_group",
-                "targets": [],
-                "sensors": ["binary_sensor.test_motion"],
-            })
+            await ha_instance.call_service(
+                "auto_off",
+                "set_group",
+                {
+                    "group_name": "invalid_group",
+                    "targets": [],
+                    "sensors": ["binary_sensor.test_motion"],
+                },
+            )
 
     async def test_set_group_requires_sensor_source(self, ha_instance):
         with pytest.raises(Exception):
-            await ha_instance.call_service("auto_off", "set_group", {
-                "group_name": "incomplete_group",
-                "targets": ["light.test_light"],
-                "sensors": [],
-                "sensor_templates": [],
-            })
+            await ha_instance.call_service(
+                "auto_off",
+                "set_group",
+                {
+                    "group_name": "incomplete_group",
+                    "targets": ["light.test_light"],
+                    "sensors": [],
+                    "sensor_templates": [],
+                },
+            )

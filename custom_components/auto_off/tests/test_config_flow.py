@@ -1,11 +1,13 @@
 """Tests for auto_off config flow."""
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
 from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResultType
 
 from custom_components.auto_off.config_flow import AutoOffConfigFlow, AutoOffOptionsFlow
-from custom_components.auto_off.const import DOMAIN, CONF_POLL_INTERVAL, CONF_GROUPS
+from custom_components.auto_off.const import CONF_GROUPS, CONF_POLL_INTERVAL, DOMAIN
 
 
 class TestAutoOffConfigFlow:
@@ -22,8 +24,8 @@ class TestAutoOffConfigFlow:
     @pytest.mark.asyncio
     async def test_step_user_form(self, flow):
         """Test user step shows form."""
-        with patch.object(flow, 'async_set_unique_id', new_callable=AsyncMock):
-            with patch.object(flow, '_abort_if_unique_id_configured'):
+        with patch.object(flow, "async_set_unique_id", new_callable=AsyncMock):
+            with patch.object(flow, "_abort_if_unique_id_configured"):
                 result = await flow.async_step_user(user_input=None)
 
         assert result["type"] == "form"
@@ -33,13 +35,11 @@ class TestAutoOffConfigFlow:
     @pytest.mark.asyncio
     async def test_step_user_create_entry(self, flow):
         """Test user step creates entry with input."""
-        with patch.object(flow, 'async_set_unique_id', new_callable=AsyncMock):
-            with patch.object(flow, '_abort_if_unique_id_configured'):
-                with patch.object(flow, 'async_create_entry') as mock_create:
+        with patch.object(flow, "async_set_unique_id", new_callable=AsyncMock):
+            with patch.object(flow, "_abort_if_unique_id_configured"):
+                with patch.object(flow, "async_create_entry") as mock_create:
                     mock_create.return_value = {"type": "create_entry"}
-                    result = await flow.async_step_user(
-                        user_input={CONF_POLL_INTERVAL: 30}
-                    )
+                    result = await flow.async_step_user(user_input={CONF_POLL_INTERVAL: 30})
 
         mock_create.assert_called_once()
         call_kwargs = mock_create.call_args[1]
@@ -50,9 +50,9 @@ class TestAutoOffConfigFlow:
     @pytest.mark.asyncio
     async def test_step_user_default_poll_interval(self, flow):
         """Test user step uses default poll interval."""
-        with patch.object(flow, 'async_set_unique_id', new_callable=AsyncMock):
-            with patch.object(flow, '_abort_if_unique_id_configured'):
-                with patch.object(flow, 'async_create_entry') as mock_create:
+        with patch.object(flow, "async_set_unique_id", new_callable=AsyncMock):
+            with patch.object(flow, "_abort_if_unique_id_configured"):
+                with patch.object(flow, "async_create_entry") as mock_create:
                     mock_create.return_value = {"type": "create_entry"}
                     result = await flow.async_step_user(user_input={})
 
@@ -62,7 +62,7 @@ class TestAutoOffConfigFlow:
 
 class TestAutoOffOptionsFlow:
     """Test the options flow.
-    
+
     Note: These tests are skipped because OptionsFlow requires full HA test harness
     with frame helper setup. The OptionsFlow logic is simple enough that it's
     covered by integration testing.

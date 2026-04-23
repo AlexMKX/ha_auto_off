@@ -1,8 +1,8 @@
 import asyncio
 import datetime
 import logging
-from typing import Any
 from collections.abc import Callable
+from typing import Any
 
 from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers.event import async_track_state_change_event, async_track_template
@@ -30,9 +30,7 @@ class GroupConfig(BaseModel):
         if not self.targets:
             raise ValueError("'targets' must be non-empty")
         if not self.sensors and not self.sensor_templates:
-            raise ValueError(
-                "At least one of 'sensors' or 'sensor_templates' must be non-empty"
-            )
+            raise ValueError("At least one of 'sensors' or 'sensor_templates' must be non-empty")
         return self
 
 
@@ -62,7 +60,7 @@ class Sensor:
         """Subscribes to its own state changes"""
         if self._unsub is not None:
             return  # Already subscribed
-            
+
         if self._is_template:
             await self._start_template_tracking()
         else:
@@ -73,14 +71,12 @@ class Sensor:
         try:
             # Initialize last valid state
             self._last_known_good_state = await self._check_template_state()
-            
+
             template = Template(str(self.raw), self.hass)
-            self._unsub = async_track_template(
-                self.hass,
-                template,
-                self._handle_template_change
+            self._unsub = async_track_template(self.hass, template, self._handle_template_change)
+            _LOGGER.debug(
+                f"Sensor template '{self.raw}' started tracking, initial state: {self._last_known_good_state}"
             )
-            _LOGGER.debug(f"Sensor template '{self.raw}' started tracking, initial state: {self._last_known_good_state}")
         except Exception as e:
             _LOGGER.error(f"Failed to track sensor template '{self.raw}': {e}")
 
@@ -90,19 +86,17 @@ class Sensor:
         if not entity_id:
             _LOGGER.warning(f"Sensor '{self.raw}' is not a valid entity or template")
             return
-            
+
         # Check that entity exists
         if self.hass.states.get(entity_id) is None:
             _LOGGER.warning(f"Sensor entity {entity_id} does not exist, skipping tracking")
             return
-            
+
         try:
             # Initialize last valid state
             self._last_known_good_state = await self._check_entity_state()
-            
-            self._unsub = async_track_state_change_event(
-                self.hass, [entity_id], self._handle_entity_change
-            )
+
+            self._unsub = async_track_state_change_event(self.hass, [entity_id], self._handle_entity_change)
             _LOGGER.debug(f"Sensor entity '{entity_id}' started tracking, initial state: {self._last_known_good_state}")
         except Exception as e:
             _LOGGER.error(f"Failed to track sensor entity '{entity_id}': {e}")
@@ -111,32 +105,34 @@ class Sensor:
         """Handles entity changes"""
         entity_id = event.data.get("entity_id")
         new_state = event.data.get("new_state")
-        
+
         # Ignore invalid states
         if not new_state or new_state.state in ("unknown", "unavailable"):
-            _LOGGER.debug(f"Sensor entity {entity_id} state is invalid ({new_state.state if new_state else 'None'}), ignoring")
+            _LOGGER.debug(
+                f"Sensor entity {entity_id} state is invalid ({new_state.state if new_state else 'None'}), ignoring"
+            )
             return
-        
+
         # Get current valid sensor state
         try:
             current_sensor_state = await self._check_entity_state()
         except Exception as e:
             _LOGGER.error(f"Failed to check sensor {entity_id} state: {e}")
             return
-        
+
         # Compare with last known state
         if self._last_known_good_state == current_sensor_state:
             _LOGGER.debug(f"Sensor entity {entity_id} state unchanged ({current_sensor_state}), ignoring")
             return
-        
+
         # Real state change!
         old_state_str = "None" if self._last_known_good_state is None else str(self._last_known_good_state)
         _LOGGER.info(f"Sensor entity {entity_id} state changed: {old_state_str} -> {current_sensor_state}")
-        
+
         # Update last valid state
         old_known_state = self._last_known_good_state
         self._last_known_good_state = current_sensor_state
-        
+
         # Notify group about real change
         if self._on_change_callback:
             await self._on_change_callback(self, old_known_state, current_sensor_state)
@@ -149,20 +145,20 @@ class Sensor:
         except Exception as e:
             _LOGGER.error(f"Failed to check template sensor '{self.raw}' state: {e}")
             return
-        
+
         # Compare with last known state
         if self._last_known_good_state == current_sensor_state:
             _LOGGER.debug(f"Sensor template '{self.raw}' state unchanged ({current_sensor_state}), ignoring")
             return
-        
+
         # Real state change!
         old_state_str = "None" if self._last_known_good_state is None else str(self._last_known_good_state)
         _LOGGER.info(f"Sensor template '{self.raw}' changed: {old_state_str} -> {current_sensor_state}")
-        
+
         # Update last valid state
         old_known_state = self._last_known_good_state
         self._last_known_good_state = current_sensor_state
-        
+
         # Notify group about real change
         if self._on_change_callback:
             await self._on_change_callback(self, old_known_state, current_sensor_state)
@@ -192,13 +188,13 @@ class Sensor:
         if not entity_id:
             _LOGGER.info(f"Sensor '{self.raw}' is not a valid entity")
             return False
-            
+
         state = self.hass.states.get(entity_id)
         if isinstance(state, State):
             result = state.state in ("on", "true", "1")
             _LOGGER.debug(f"Entity sensor '{entity_id}' state: {state.state} -> {result}")
             return result
-        
+
         _LOGGER.info(f"Sensor entity '{entity_id}' state not found")
         return False
 
@@ -228,7 +224,7 @@ class Target:
 
     def _detect_template(self) -> bool:
         """Determines if target_def is a template"""
-        return isinstance(self.raw, str) and '{{' in self.raw and '}}' in self.raw
+        return isinstance(self.raw, str) and "{{" in self.raw and "}}" in self.raw
 
     async def _get_entity_ids(self) -> list[str]:
         """Gets list of entity_ids from template or returns single entity_id"""
@@ -242,11 +238,11 @@ class Target:
         try:
             tpl = Template(str(self.raw), self.hass)
             rendered = tpl.async_render()
-            
+
             # Template should return a list
             if isinstance(rendered, list):
                 # Filter only valid entity_ids
-                entity_ids = [str(e) for e in rendered if isinstance(e, str) and '.' in str(e)]
+                entity_ids = [str(e) for e in rendered if isinstance(e, str) and "." in str(e)]
                 _LOGGER.debug(f"Template target '{self.raw}' rendered to entities: {entity_ids}")
                 return entity_ids
             else:
@@ -260,14 +256,14 @@ class Target:
         """Subscribes to its own state changes"""
         if self._unsub_list:
             return  # Already subscribed
-        
+
         # Get current list of entity_ids
         self._current_entity_ids = await self._get_entity_ids()
-        
+
         if not self._current_entity_ids:
             _LOGGER.warning(f"Target '{self.raw}' has no valid entities, skipping tracking")
             return
-        
+
         # Check that all entities exist
         valid_entities = []
         for entity_id in self._current_entity_ids:
@@ -275,51 +271,55 @@ class Target:
                 valid_entities.append(entity_id)
             else:
                 _LOGGER.warning(f"Target entity {entity_id} does not exist, skipping")
-        
+
         if not valid_entities:
             _LOGGER.warning(f"Target '{self.raw}' has no existing entities, skipping tracking")
             return
-        
+
         self._current_entity_ids = valid_entities
-        
+
         # Initialize last valid state
         self._last_known_good_state = await self.is_on()
-        
+
         # Subscribe to changes for each entity
         for entity_id in self._current_entity_ids:
-            unsub = async_track_state_change_event(
-                self.hass, [entity_id], self._handle_my_changes
-            )
+            unsub = async_track_state_change_event(self.hass, [entity_id], self._handle_my_changes)
             self._unsub_list.append(unsub)
-        
-        _LOGGER.debug(f"Target '{self.raw}' started tracking {len(self._current_entity_ids)} entities, initial state: {self._last_known_good_state}")
+
+        _LOGGER.debug(
+            f"Target '{self.raw}' started tracking {len(self._current_entity_ids)} entities, initial state: {self._last_known_good_state}"
+        )
 
     async def _handle_my_changes(self, event):
         """Decides what's important and what's not"""
         entity_id = event.data.get("entity_id")
         new_state = event.data.get("new_state")
-        
+
         # Ignore invalid states
         if not new_state or new_state.state in ("unknown", "unavailable"):
-            _LOGGER.debug(f"Target entity {entity_id} state is invalid ({new_state.state if new_state else 'None'}), ignoring")
+            _LOGGER.debug(
+                f"Target entity {entity_id} state is invalid ({new_state.state if new_state else 'None'}), ignoring"
+            )
             return
-        
+
         # Get current valid state of all targets
         current_target_state = await self.is_on()
-        
+
         # Compare with last known state
         if self._last_known_good_state == current_target_state:
             _LOGGER.debug(f"Target '{self.raw}' overall state unchanged ({current_target_state}), ignoring")
             return
-        
+
         # Real state change!
         old_state_str = "None" if self._last_known_good_state is None else str(self._last_known_good_state)
-        _LOGGER.info(f"Target '{self.raw}' state changed: {old_state_str} -> {current_target_state} (triggered by {entity_id})")
-        
+        _LOGGER.info(
+            f"Target '{self.raw}' state changed: {old_state_str} -> {current_target_state} (triggered by {entity_id})"
+        )
+
         # Update last valid state
         old_known_state = self._last_known_good_state
         self._last_known_good_state = current_target_state
-        
+
         # Notify group about IMPORTANT state change
         if self._on_change_callback:
             await self._on_change_callback(self, old_known_state, current_target_state)
@@ -329,16 +329,16 @@ class Target:
         # If template, need to update entity_ids list
         if self._is_template:
             self._current_entity_ids = await self._get_entity_ids()
-        
+
         if not self._current_entity_ids:
             return False
-        
+
         # Target is considered on if at least one entity is on
         for entity_id in self._current_entity_ids:
             state = self.hass.states.get(entity_id)
             if state is not None and state.state not in ("unavailable", "unknown", "off"):
                 return True
-        
+
         return False
 
     async def turn_off(self):
@@ -349,7 +349,7 @@ class Target:
             service = "turn_off"
             task = self.hass.services.async_call(domain, service, {"entity_id": entity_id}, blocking=True)
             tasks.append(task)
-        
+
         if tasks:
             try:
                 await asyncio.gather(*tasks)
@@ -435,8 +435,8 @@ class SensorGroup:
         for s in self._sensors:
             is_on = await s.is_on()
             if is_on:
-                sensors_on.append(getattr(s, 'raw', str(s)))
-        
+                sensors_on.append(getattr(s, "raw", str(s)))
+
         if sensors_on:
             _LOGGER.debug(f"[Group {self.group_id}] Sensors still ON: {sensors_on}")
             return False
@@ -461,41 +461,40 @@ class SensorGroup:
         async with self._lock:
             # Collect current state
             current_state = await self._collect_current_state()
-            
+
             # Log state
             self._log_current_state(current_state)
-            
+
             # First run initialization
             if self._is_first_run():
                 self._handle_first_run(current_state)
                 return
-            
+
             # Log state transitions
             await self._log_state_transitions(current_state)
-            
+
             # Make deadline decisions
             await self._handle_deadline_logic(current_state)
-            
+
             # Save current state as previous
             self._update_last_states(current_state)
-            
 
     async def _collect_current_state(self) -> dict:
         """Collects current state of sensors and targets"""
         target_on = await self.any_target_on()
         all_sensors_off = await self.all_sensors_off()
-        
+
         return {
-            'target_on': target_on,
-            'all_sensors_off': all_sensors_off,
-            'human_deadline': self._get_human_deadline()
+            "target_on": target_on,
+            "all_sensors_off": all_sensors_off,
+            "human_deadline": self._get_human_deadline(),
         }
 
     def _get_human_deadline(self) -> str:
         """Converts deadline to human-readable format for logging"""
         if self._timer_deadline is None:
             return "None"
-        
+
         now_real = datetime.datetime.now().astimezone()
         now_monotonic = self.hass.loop.time()
         seconds_until_deadline = self._timer_deadline - now_monotonic
@@ -514,14 +513,14 @@ class SensorGroup:
         try:
             self._on_deadline_change(self.group_id, deadline_iso)
         except Exception as exc:
-            _LOGGER.debug(
-                "Failed to notify deadline change for group %s: %s", self.group_id, exc
-            )
+            _LOGGER.debug("Failed to notify deadline change for group %s: %s", self.group_id, exc)
 
     def _log_current_state(self, state: dict):
         """Logs current group state"""
-        _LOGGER.debug(f"[Checking Group {self.group_id}] target_on={state['target_on']}, "
-                     f"all_sensors_off={state['all_sensors_off']}, deadline={state['human_deadline']}")
+        _LOGGER.debug(
+            f"[Checking Group {self.group_id}] target_on={state['target_on']}, "
+            f"all_sensors_off={state['all_sensors_off']}, deadline={state['human_deadline']}"
+        )
 
     def _is_first_run(self) -> bool:
         """Checks if this is the first run"""
@@ -530,12 +529,12 @@ class SensorGroup:
     def _handle_first_run(self, state: dict):
         """Handles first system run"""
         _LOGGER.info(f"[Group {self.group_id}] First run initialization")
-        self._last_all_sensors_off = state['all_sensors_off']
-        self._last_any_target_on = state['target_on']
-        
+        self._last_all_sensors_off = state["all_sensors_off"]
+        self._last_any_target_on = state["target_on"]
+
         # At startup just set deadline if needed
         # Expired deadlines check will be in periodic worker
-        if state['target_on'] and state['all_sensors_off'] and self._timer_deadline is None:
+        if state["target_on"] and state["all_sensors_off"] and self._timer_deadline is None:
             asyncio.create_task(self._set_deadline_from_delay("startup"))
 
     async def _set_deadline_from_delay(self, reason: str):
@@ -544,10 +543,12 @@ class SensorGroup:
         now = self.hass.loop.time()
         new_deadline = now + delay
         self._start_deadline(force_deadline=new_deadline)
-        
+
         now_real = datetime.datetime.now().astimezone()
         human_deadline = (now_real + datetime.timedelta(seconds=delay)).isoformat()
-        _LOGGER.info(f"[Group {self.group_id}] Deadline set by {reason}: {delay}s | New deadline: {new_deadline} ({human_deadline})")
+        _LOGGER.info(
+            f"[Group {self.group_id}] Deadline set by {reason}: {delay}s | New deadline: {new_deadline} ({human_deadline})"
+        )
 
     async def _log_state_transitions(self, state: dict):
         """Logs detailed information about state transitions"""
@@ -559,13 +560,13 @@ class SensorGroup:
             except Exception as e:
                 status = f"error: {e}"
             sensor_statuses.append(f"{getattr(s, 'raw', str(s))}: {status}")
-        
+
         target_statuses = []
         for t in self._targets:
             try:
                 status = await t.is_on()
                 # Show how many entity_ids are active for templates
-                if hasattr(t, '_current_entity_ids') and len(t._current_entity_ids) > 1:
+                if hasattr(t, "_current_entity_ids") and len(t._current_entity_ids) > 1:
                     active_count = 0
                     for eid in t._current_entity_ids:
                         state_obj = self.hass.states.get(eid)
@@ -579,29 +580,31 @@ class SensorGroup:
             target_statuses.append(f"{getattr(t, 'raw', str(t))}: {status_str}")
 
         _LOGGER.debug(f"[Group {self.group_id}] Sensors: {sensor_statuses} | Targets: {target_statuses}")
-        _LOGGER.debug(f"[Group {self.group_id}] State transition: "
-                     f"last_all_sensors_off={self._last_all_sensors_off} -> all_sensors_off={state['all_sensors_off']}, "
-                     f"last_any_target_on={self._last_any_target_on} -> any_target_on={state['target_on']}")
+        _LOGGER.debug(
+            f"[Group {self.group_id}] State transition: "
+            f"last_all_sensors_off={self._last_all_sensors_off} -> all_sensors_off={state['all_sensors_off']}, "
+            f"last_any_target_on={self._last_any_target_on} -> any_target_on={state['target_on']}"
+        )
 
     async def _handle_deadline_logic(self, state: dict):
         """Main deadline decision logic"""
         # If target is off -> always cancel deadline
-        if not state['target_on']:
+        if not state["target_on"]:
             if self._cancel_deadline():
                 _LOGGER.info(f"[Group {self.group_id}] Deadline cancelled: target is off")
             return
 
         # Target is on - analyze state transitions
         transitions = self._analyze_state_transitions(state)
-        
-        if transitions['target_turned_on'] and state['all_sensors_off']:
+
+        if transitions["target_turned_on"] and state["all_sensors_off"]:
             await self._set_deadline_from_delay("target turning ON")
-        elif transitions['sensors_turned_off'] and state['target_on']:
+        elif transitions["sensors_turned_off"] and state["target_on"]:
             await self._set_deadline_from_delay("sensors turning OFF")
-        elif transitions['sensors_turned_on']:
+        elif transitions["sensors_turned_on"]:
             if self._cancel_deadline():
                 _LOGGER.info(f"[Group {self.group_id}] Deadline cancelled: sensor turned on")
-        elif state['target_on'] and state['all_sensors_off'] and self._timer is None:
+        elif state["target_on"] and state["all_sensors_off"] and self._timer is None:
             # Timer lost (e.g. after restart) - check expired deadlines
             await self._check_expired_deadlines()
 
@@ -616,15 +619,15 @@ class SensorGroup:
     def _analyze_state_transitions(self, state: dict) -> dict:
         """Analyzes state transitions"""
         return {
-            'target_turned_on': self._last_any_target_on is False and state['target_on'],
-            'sensors_turned_off': self._last_all_sensors_off is False and state['all_sensors_off'],
-            'sensors_turned_on': self._last_all_sensors_off is True and not state['all_sensors_off']
+            "target_turned_on": self._last_any_target_on is False and state["target_on"],
+            "sensors_turned_off": self._last_all_sensors_off is False and state["all_sensors_off"],
+            "sensors_turned_on": self._last_all_sensors_off is True and not state["all_sensors_off"],
         }
 
     def _update_last_states(self, state: dict):
         """Updates previous states"""
-        self._last_all_sensors_off = state['all_sensors_off']
-        self._last_any_target_on = state['target_on']
+        self._last_all_sensors_off = state["all_sensors_off"]
+        self._last_any_target_on = state["target_on"]
 
     def _start_deadline(self, force_deadline=None):
         # This method is only called from check_and_set_deadline, which is already under lock
@@ -661,7 +664,7 @@ class SensorGroup:
         self._timer = None
         self._timer_deadline = None
         self._notify_deadline_change()
-        
+
         tasks = []
         for target in self._targets:
             tasks.append(target.turn_off())
@@ -674,7 +677,7 @@ class SensorGroup:
         async with self._lock:
             # Cancel timer
             self._cancel_deadline()
-            
+
             # Sensors unsubscribe from their own events
             for sensor in self._sensors:
                 await sensor.stop_tracking()
@@ -737,8 +740,12 @@ class AutoOffManager:
                     group_config,
                     on_deadline_change=self._on_deadline_change,
                 )
-                _LOGGER.info("Initialized auto-off group '%s' with %d sensors and %d targets",
-                             group_id, len(group_config.sensors), len(group_config.targets))
+                _LOGGER.info(
+                    "Initialized auto-off group '%s' with %d sensors and %d targets",
+                    group_id,
+                    len(group_config.sensors),
+                    len(group_config.targets),
+                )
             except Exception as e:
                 _LOGGER.error("Failed to initialize auto-off group '%s': %s", group_id, e)
 

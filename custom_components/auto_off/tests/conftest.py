@@ -3,6 +3,7 @@ Pytest fixtures - conditionally loads unit or e2e fixtures based on environment.
 
 ha-test-kit sets AUTOQA_MODE=unit or AUTOQA_MODE=e2e.
 """
+
 import os
 import sys
 

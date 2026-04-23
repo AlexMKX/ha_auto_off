@@ -1,6 +1,7 @@
 """Sensor entities for Auto Off group configuration."""
+
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -57,7 +58,7 @@ class DeadlineSensorEntity(SensorEntity):
         )
 
     @property
-    def extra_state_attributes(self) -> Dict[str, Any]:
+    def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
         return {
             "deadline_iso": self._deadline_iso,
@@ -70,6 +71,7 @@ class DeadlineSensorEntity(SensorEntity):
         if deadline_str:
             try:
                 from datetime import datetime
+
                 deadline = datetime.fromisoformat(deadline_str)
                 # Format as human-readable
                 self._attr_native_value = deadline.strftime("%H:%M:%S")

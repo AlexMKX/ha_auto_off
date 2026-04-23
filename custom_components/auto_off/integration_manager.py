@@ -1,10 +1,12 @@
 """Integration manager for Auto Off."""
+
 import asyncio
 import logging
 from datetime import timedelta
 from typing import Any
 
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
 
@@ -75,9 +77,7 @@ class IntegrationManager:
 
         if new_entities:
             async_add_entities(new_entities)
-            _LOGGER.info(
-                "Created %d deadline sensor entities for groups", len(new_entities)
-            )
+            _LOGGER.info("Created %d deadline sensor entities for groups", len(new_entities))
 
     def text_platform_ready(self, async_add_entities: AddEntitiesCallback) -> None:
         """Register the text platform's add-entities callback and create
@@ -90,17 +90,13 @@ class IntegrationManager:
         for group_name, config_dict in self._groups_data.items():
             if group_name in self._text_entities:
                 continue
-            delay_entity = DelayTextEntity(
-                self.hass, self, group_name, config_dict
-            )
+            delay_entity = DelayTextEntity(self.hass, self, group_name, config_dict)
             self._text_entities[group_name] = delay_entity
             new_entities.append(delay_entity)
 
         if new_entities:
             async_add_entities(new_entities)
-            _LOGGER.info(
-                "Created %d delay text entities for groups", len(new_entities)
-            )
+            _LOGGER.info("Created %d delay text entities for groups", len(new_entities))
 
     async def async_initialize(self):
         """Initialize the integration manager."""
@@ -129,7 +125,7 @@ class IntegrationManager:
         deadline_entity = self._deadline_entities.get(group_name)
         if not deadline_entity:
             return
-        
+
         group = self.auto_off._groups.get(group_name)
         if group:
             deadline_str = group._get_human_deadline()
@@ -149,7 +145,7 @@ class IntegrationManager:
             # Update AutoOffManager (awaits unload of old groups)
             self.auto_off.config[group_name] = group_config
             await self.auto_off.async_init_groups()
-            
+
             # Trigger immediate state check for new group
             if is_new:
                 group = self.auto_off._groups.get(group_name)
@@ -160,9 +156,7 @@ class IntegrationManager:
             if is_new and self._sensor_async_add_entities:
                 from .sensor import DeadlineSensorEntity
 
-                deadline_entity = DeadlineSensorEntity(
-                    self.hass, self.entry, group_name
-                )
+                deadline_entity = DeadlineSensorEntity(self.hass, self.entry, group_name)
                 self._deadline_entities[group_name] = deadline_entity
                 self._sensor_async_add_entities([deadline_entity])
                 _LOGGER.info("Created deadline sensor for new group '%s'", group_name)
@@ -172,9 +166,8 @@ class IntegrationManager:
             # Create or update delay text entity
             if is_new and self._text_async_add_entities:
                 from .text import DelayTextEntity
-                delay_entity = DelayTextEntity(
-                    self.hass, self, group_name, config_dict
-                )
+
+                delay_entity = DelayTextEntity(self.hass, self, group_name, config_dict)
                 self._text_entities[group_name] = delay_entity
                 self._text_async_add_entities([delay_entity])
                 _LOGGER.info(f"Created delay text entity for new group '{group_name}'")

@@ -1,5 +1,6 @@
 """Periodic discovery of door/lock/cover sources and creation of
 corresponding occupancy binary sensors."""
+
 from __future__ import annotations
 
 import logging
@@ -41,16 +42,12 @@ class DoorOccupancyManager:
             entities.add(state.entity_id)
         return sorted(entities)
 
-    async def async_platform_ready(
-        self, async_add_entities: AddEntitiesCallback
-    ) -> None:
+    async def async_platform_ready(self, async_add_entities: AddEntitiesCallback) -> None:
         """Called once by the binary_sensor platform setup."""
         self._async_add_entities = async_add_entities
         await self._discover_and_add_sensors()
         poll_interval = self.entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
-        self._remove_listener = async_track_time_interval(
-            self.hass, self._on_tick, timedelta(seconds=poll_interval)
-        )
+        self._remove_listener = async_track_time_interval(self.hass, self._on_tick, timedelta(seconds=poll_interval))
 
     async def _on_tick(self, _now) -> None:
         await self._discover_and_add_sensors()

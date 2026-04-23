@@ -5,6 +5,7 @@ a lock, or a cover) and calls pulse() on every real state change, which
 turns the occupancy sensor on briefly. The on-to-off reset is owned by
 AutoResetBinarySensor.
 """
+
 from __future__ import annotations
 
 import logging
@@ -65,18 +66,14 @@ class DoorOccupancyBinarySensor(AutoResetBinarySensor):
         dev_reg = device_registry.async_get(self.hass)
         entry = ent_reg.async_get(self._source_entity_id)
         if entry and entry.device_id:
-            dev_reg.async_update_device(
-                entry.device_id, add_config_entry_id=self._config_entry.entry_id
-            )
+            dev_reg.async_update_device(entry.device_id, add_config_entry_id=self._config_entry.entry_id)
 
         # Seed _prev_state from the current source state so the first *real*
         # change fires pulse(), while startup is not treated as a change.
         current = self.hass.states.get(self._source_entity_id)
         self._prev_state = current.state if current else None
 
-        self._unsub = async_track_state_change_event(
-            self.hass, [self._source_entity_id], self._handle_source_event
-        )
+        self._unsub = async_track_state_change_event(self.hass, [self._source_entity_id], self._handle_source_event)
         _LOGGER.info(
             "DoorOccupancyBinarySensor '%s' attached to %s",
             self._attr_name,

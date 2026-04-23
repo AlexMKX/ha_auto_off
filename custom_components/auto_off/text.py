@@ -1,6 +1,7 @@
 """Editable text entity for Auto Off group delay configuration."""
+
 import logging
-from typing import Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from homeassistant.components.text import TextEntity, TextMode
 from homeassistant.config_entries import ConfigEntry
@@ -8,7 +9,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, CONF_DELAY
+from .const import CONF_DELAY, DOMAIN
 
 if TYPE_CHECKING:
     from .integration_manager import IntegrationManager
@@ -40,7 +41,7 @@ class DelayTextEntity(TextEntity):
         hass: HomeAssistant,
         manager: "IntegrationManager",
         group_name: str,
-        config_dict: Dict,
+        config_dict: dict,
     ) -> None:
         """Initialize delay text entity."""
         self.hass = hass
@@ -67,7 +68,7 @@ class DelayTextEntity(TextEntity):
         self._attr_native_value = str(delay)
 
     @callback
-    def update_config(self, config_dict: Dict) -> None:
+    def update_config(self, config_dict: dict) -> None:
         """Update the config from external source."""
         self._config_dict = config_dict
         self._update_native_value()
@@ -76,15 +77,15 @@ class DelayTextEntity(TextEntity):
     async def async_set_value(self, value: str) -> None:
         """Handle value change from UI."""
         value = value.strip()
-        
+
         # Try to parse as int, otherwise keep as string (template)
         try:
             delay = int(value)
         except ValueError:
             delay = value  # Keep as string for template support
-        
+
         new_config = dict(self._config_dict)
         new_config[CONF_DELAY] = delay
-        
+
         _LOGGER.info(f"Updating delay for group '{self._group_name}': {delay}")
         await self._manager.update_group_config(self._group_name, new_config)

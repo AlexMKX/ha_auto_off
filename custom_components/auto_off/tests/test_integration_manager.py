@@ -1,12 +1,14 @@
 """Tests for auto_off integration manager."""
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from custom_components.auto_off.const import CONF_GROUPS, CONF_POLL_INTERVAL, DOMAIN
 from custom_components.auto_off.integration_manager import (
     IntegrationManager,
     parse_group_configs,
 )
-from custom_components.auto_off.const import DOMAIN, CONF_GROUPS, CONF_POLL_INTERVAL
 
 
 class TestParseGroupConfigs:
@@ -53,9 +55,7 @@ class TestIntegrationManager:
     @pytest.fixture
     def manager(self, hass, config_entry):
         """Create an IntegrationManager instance."""
-        with patch(
-            "custom_components.auto_off.integration_manager.AutoOffManager"
-        ) as mock_aom:
+        with patch("custom_components.auto_off.integration_manager.AutoOffManager") as mock_aom:
             mock_aom.return_value = MagicMock()
             manager = IntegrationManager(hass, config_entry)
             manager.auto_off = MagicMock()
@@ -66,9 +66,7 @@ class TestIntegrationManager:
             return manager
 
     @pytest.mark.asyncio
-    async def test_set_group_creates_new(
-        self, manager, sample_group_config_dict
-    ):
+    async def test_set_group_creates_new(self, manager, sample_group_config_dict):
         manager._text_async_add_entities = MagicMock()
         manager._sensor_async_add_entities = MagicMock()
 
@@ -84,9 +82,7 @@ class TestIntegrationManager:
         assert len(added) == 1
 
     @pytest.mark.asyncio
-    async def test_set_group_updates_existing(
-        self, manager, sample_group_config_dict
-    ):
+    async def test_set_group_updates_existing(self, manager, sample_group_config_dict):
         """Test set_group updates an existing group."""
         manager._groups_data["existing_group"] = {"sensors": [], "targets": [], "delay": 0}
         mock_text_entity = MagicMock()
@@ -106,12 +102,8 @@ class TestIntegrationManager:
         mock_group.async_unload = AsyncMock()
         manager.auto_off._groups["to_delete"] = mock_group
 
-        with patch(
-            "custom_components.auto_off.integration_manager.er.async_get"
-        ) as mock_er:
-            with patch(
-                "custom_components.auto_off.integration_manager.dr.async_get"
-            ) as mock_dr:
+        with patch("custom_components.auto_off.integration_manager.er.async_get") as mock_er:
+            with patch("custom_components.auto_off.integration_manager.dr.async_get") as mock_dr:
                 mock_er.return_value = MagicMock()
                 mock_dr.return_value = MagicMock()
                 mock_dr.return_value.async_get_device.return_value = None
@@ -125,9 +117,7 @@ class TestIntegrationManager:
     @pytest.mark.asyncio
     async def test_async_initialize(self, manager, hass):
         """Test async_initialize sets up periodic worker."""
-        with patch(
-            "custom_components.auto_off.integration_manager.async_track_time_interval"
-        ) as mock_track:
+        with patch("custom_components.auto_off.integration_manager.async_track_time_interval") as mock_track:
             mock_track.return_value = MagicMock()
             await manager.async_initialize()
 
@@ -149,9 +139,7 @@ class TestIntegrationManager:
         manager._groups_data = {"group1": sample_group_config_dict}
         mock_add_entities = MagicMock()
 
-        with patch(
-            "custom_components.auto_off.text.DelayTextEntity"
-        ) as mock_entity_class:
+        with patch("custom_components.auto_off.text.DelayTextEntity") as mock_entity_class:
             mock_entity_class.return_value = MagicMock()
             manager.text_platform_ready(mock_add_entities)
 

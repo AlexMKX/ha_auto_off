@@ -3,6 +3,7 @@
 Covers the contract: pulse() turns on, a scheduled reset turns off,
 a new pulse() restarts the reset timer, and removal cancels the timer.
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -66,9 +67,11 @@ class TestAutoResetBinarySensor:
         """The callback passed to async_call_later must turn is_on back to False."""
         cancel = MagicMock()
         captured = {}
+
         def fake_call_later(_hass, _delay, cb):
             captured["cb"] = cb
             return cancel
+
         with patch(
             "custom_components.door_occupancy.auto_reset.async_call_later",
             side_effect=fake_call_later,

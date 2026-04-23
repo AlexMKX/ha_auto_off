@@ -4,6 +4,7 @@ Subclasses call pulse() to turn the sensor on; it automatically resets
 to off after a configured timeout. A new pulse() call cancels and
 reschedules the reset, which gives a "sliding window" behavior.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -33,9 +34,7 @@ class AutoResetBinarySensor(BinarySensorEntity):
         self._attr_is_on = True
         if self._cancel_reset is not None:
             self._cancel_reset()
-        self._cancel_reset = async_call_later(
-            self.hass, self._reset_timeout, self._on_reset
-        )
+        self._cancel_reset = async_call_later(self.hass, self._reset_timeout, self._on_reset)
         self.async_write_ha_state()
 
     @callback

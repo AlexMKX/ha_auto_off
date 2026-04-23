@@ -1,9 +1,11 @@
 """Tests for auto_off delay text entity."""
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from custom_components.auto_off.const import CONF_DELAY, DOMAIN
 from custom_components.auto_off.text import DelayTextEntity
-from custom_components.auto_off.const import DOMAIN, CONF_DELAY
 
 
 class TestDelayTextEntity:
@@ -19,9 +21,7 @@ class TestDelayTextEntity:
     @pytest.fixture
     def delay_entity(self, hass, mock_manager, sample_group_config_dict):
         """Create a DelayTextEntity instance."""
-        return DelayTextEntity(
-            hass, mock_manager, "test_group", sample_group_config_dict
-        )
+        return DelayTextEntity(hass, mock_manager, "test_group", sample_group_config_dict)
 
     def test_init(self, delay_entity, sample_group_config_dict):
         """Test entity initialization - delay is in minutes."""
@@ -40,7 +40,7 @@ class TestDelayTextEntity:
     async def test_async_set_value_int(self, delay_entity, mock_manager):
         """Test async_set_value with integer (minutes)."""
         await delay_entity.async_set_value("10")
-        
+
         mock_manager.update_group_config.assert_called_once()
         call_args = mock_manager.update_group_config.call_args[0]
         assert call_args[0] == "test_group"
@@ -51,7 +51,7 @@ class TestDelayTextEntity:
         """Test async_set_value with template string."""
         template = "{{ states('input_number.delay') | int }}"
         await delay_entity.async_set_value(template)
-        
+
         mock_manager.update_group_config.assert_called_once()
         call_args = mock_manager.update_group_config.call_args[0]
         assert call_args[1][CONF_DELAY] == template
@@ -59,6 +59,6 @@ class TestDelayTextEntity:
     def test_update_config(self, delay_entity):
         """Test update_config updates the value."""
         new_config = {CONF_DELAY: 60}
-        with patch.object(delay_entity, 'async_write_ha_state'):
+        with patch.object(delay_entity, "async_write_ha_state"):
             delay_entity.update_config(new_config)
         assert delay_entity._attr_native_value == "60"

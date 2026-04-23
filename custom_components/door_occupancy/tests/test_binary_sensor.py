@@ -3,6 +3,7 @@
 Covers: construction, state subscription, pulse on real state changes,
 regression for the dropped-first-event bug, and invalid-state filtering.
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -47,18 +48,10 @@ class TestDoorOccupancyBinarySensor:
         assert sensor._attr_is_on is False
         assert sensor._attr_should_poll is False
 
-    async def test_added_to_hass_subscribes_and_reads_initial_state(
-        self, hass, sensor, source_state_closed
-    ):
-        with patch(
-            "custom_components.door_occupancy.binary_sensor.async_track_state_change_event"
-        ) as mock_track:
-            with patch(
-                "custom_components.door_occupancy.binary_sensor.entity_registry"
-            ):
-                with patch(
-                    "custom_components.door_occupancy.binary_sensor.device_registry"
-                ):
+    async def test_added_to_hass_subscribes_and_reads_initial_state(self, hass, sensor, source_state_closed):
+        with patch("custom_components.door_occupancy.binary_sensor.async_track_state_change_event") as mock_track:
+            with patch("custom_components.door_occupancy.binary_sensor.entity_registry"):
+                with patch("custom_components.door_occupancy.binary_sensor.device_registry"):
                     mock_track.return_value = lambda: None
                     await sensor.async_added_to_hass()
 
@@ -79,12 +72,8 @@ class TestDoorOccupancyBinarySensor:
             "custom_components.door_occupancy.binary_sensor.async_track_state_change_event",
             return_value=lambda: None,
         ):
-            with patch(
-                "custom_components.door_occupancy.binary_sensor.entity_registry"
-            ):
-                with patch(
-                    "custom_components.door_occupancy.binary_sensor.device_registry"
-                ):
+            with patch("custom_components.door_occupancy.binary_sensor.entity_registry"):
+                with patch("custom_components.door_occupancy.binary_sensor.device_registry"):
                     await sensor.async_added_to_hass()
 
         event = MagicMock()
@@ -103,12 +92,8 @@ class TestDoorOccupancyBinarySensor:
             "custom_components.door_occupancy.binary_sensor.async_track_state_change_event",
             return_value=lambda: None,
         ):
-            with patch(
-                "custom_components.door_occupancy.binary_sensor.entity_registry"
-            ):
-                with patch(
-                    "custom_components.door_occupancy.binary_sensor.device_registry"
-                ):
+            with patch("custom_components.door_occupancy.binary_sensor.entity_registry"):
+                with patch("custom_components.door_occupancy.binary_sensor.device_registry"):
                     await sensor.async_added_to_hass()
 
         event = MagicMock()
@@ -126,12 +111,8 @@ class TestDoorOccupancyBinarySensor:
             "custom_components.door_occupancy.binary_sensor.async_track_state_change_event",
             return_value=lambda: None,
         ):
-            with patch(
-                "custom_components.door_occupancy.binary_sensor.entity_registry"
-            ):
-                with patch(
-                    "custom_components.door_occupancy.binary_sensor.device_registry"
-                ):
+            with patch("custom_components.door_occupancy.binary_sensor.entity_registry"):
+                with patch("custom_components.door_occupancy.binary_sensor.device_registry"):
                     await sensor.async_added_to_hass()
 
         # Initial state was "off"; "off" again must not pulse.

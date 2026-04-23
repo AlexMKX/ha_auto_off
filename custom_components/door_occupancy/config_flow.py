@@ -1,8 +1,8 @@
 """Config flow for the Door Occupancy integration."""
+
 from __future__ import annotations
 
 import voluptuous as vol
-
 from homeassistant import config_entries
 from homeassistant.core import callback
 
@@ -21,9 +21,7 @@ def _user_schema(
 ) -> vol.Schema:
     return vol.Schema(
         {
-            vol.Optional(CONF_POLL_INTERVAL, default=current_poll): vol.All(
-                vol.Coerce(int), vol.Range(min=5, max=300)
-            ),
+            vol.Optional(CONF_POLL_INTERVAL, default=current_poll): vol.All(vol.Coerce(int), vol.Range(min=5, max=300)),
             vol.Optional(CONF_OCCUPANCY_TIMEOUT, default=current_timeout): vol.All(
                 vol.Coerce(int), vol.Range(min=1, max=600)
             ),
@@ -45,12 +43,8 @@ class DoorOccupancyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_create_entry(
                 title="Door Occupancy",
                 data={
-                    CONF_POLL_INTERVAL: user_input.get(
-                        CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL
-                    ),
-                    CONF_OCCUPANCY_TIMEOUT: user_input.get(
-                        CONF_OCCUPANCY_TIMEOUT, DEFAULT_OCCUPANCY_TIMEOUT
-                    ),
+                    CONF_POLL_INTERVAL: user_input.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL),
+                    CONF_OCCUPANCY_TIMEOUT: user_input.get(CONF_OCCUPANCY_TIMEOUT, DEFAULT_OCCUPANCY_TIMEOUT),
                 },
             )
 
@@ -79,11 +73,7 @@ class DoorOccupancyOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="init",
             data_schema=_user_schema(
-                current_poll=self.config_entry.data.get(
-                    CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL
-                ),
-                current_timeout=self.config_entry.data.get(
-                    CONF_OCCUPANCY_TIMEOUT, DEFAULT_OCCUPANCY_TIMEOUT
-                ),
+                current_poll=self.config_entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL),
+                current_timeout=self.config_entry.data.get(CONF_OCCUPANCY_TIMEOUT, DEFAULT_OCCUPANCY_TIMEOUT),
             ),
         )

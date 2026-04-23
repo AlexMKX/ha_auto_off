@@ -1,11 +1,12 @@
 """Config flow for Auto Off integration."""
-import logging
-import voluptuous as vol
 
+import logging
+
+import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
 
-from .const import DOMAIN, CONF_POLL_INTERVAL, CONF_GROUPS
+from .const import CONF_GROUPS, CONF_POLL_INTERVAL, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,11 +35,13 @@ class AutoOffConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema({
-                vol.Optional(CONF_POLL_INTERVAL, default=DEFAULT_POLL_INTERVAL): vol.All(
-                    vol.Coerce(int), vol.Range(min=5, max=300)
-                ),
-            }),
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(CONF_POLL_INTERVAL, default=DEFAULT_POLL_INTERVAL): vol.All(
+                        vol.Coerce(int), vol.Range(min=5, max=300)
+                    ),
+                }
+            ),
         )
 
     @staticmethod
@@ -57,21 +60,18 @@ class AutoOffOptionsFlow(config_entries.OptionsFlow):
             # Update the config entry data with new poll_interval
             new_data = dict(self.config_entry.data)
             new_data[CONF_POLL_INTERVAL] = user_input[CONF_POLL_INTERVAL]
-            self.hass.config_entries.async_update_entry(
-                self.config_entry, data=new_data
-            )
+            self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
             return self.async_create_entry(title="", data={})
 
-        current_poll_interval = self.config_entry.data.get(
-            CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL
-        )
+        current_poll_interval = self.config_entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
 
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema({
-                vol.Optional(
-                    CONF_POLL_INTERVAL, 
-                    default=current_poll_interval
-                ): vol.All(vol.Coerce(int), vol.Range(min=5, max=300)),
-            }),
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(CONF_POLL_INTERVAL, default=current_poll_interval): vol.All(
+                        vol.Coerce(int), vol.Range(min=5, max=300)
+                    ),
+                }
+            ),
         )

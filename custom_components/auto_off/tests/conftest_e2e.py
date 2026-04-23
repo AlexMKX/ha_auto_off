@@ -5,6 +5,7 @@ ha-test-kit handles provisioning and exports:
   - HA_BASE_URL
   - HASS_LONG_LIVED_TOKEN
 """
+
 import os
 
 import aiohttp
@@ -43,9 +44,7 @@ class HAInstance:
 
     async def api_post(self, path: str, json: dict | None = None) -> dict:
         async with aiohttp.ClientSession(connector=self._connector()) as s:
-            async with s.post(
-                f"{self.base_url}{path}", headers=self._headers, json=json or {}
-            ) as r:
+            async with s.post(f"{self.base_url}{path}", headers=self._headers, json=json or {}) as r:
                 r.raise_for_status()
                 return await r.json()
 
@@ -101,16 +100,22 @@ class HAInstance:
     ) -> None:
         """Create an auto_off group via YAML-only set_group service."""
         import yaml
+
         config_yaml = yaml.dump({"sensors": sensors, "targets": targets, "delay": delay})
-        await self.call_service("auto_off", "set_group", {
-            "group_name": group_name,
-            "config": config_yaml,
-        })
+        await self.call_service(
+            "auto_off",
+            "set_group",
+            {
+                "group_name": group_name,
+                "config": config_yaml,
+            },
+        )
 
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest_asyncio.fixture(scope="session")
 async def ha_instance() -> HAInstance:
@@ -126,6 +131,7 @@ async def ha_instance() -> HAInstance:
 async def ha_with_integration(ha_instance: HAInstance) -> HAInstance:
     """Ensure auto_off integration is installed."""
     import asyncio
+
     entries = await ha_instance.get_config_entries("auto_off")
     if not entries:
         await ha_instance.add_integration("auto_off", {"poll_interval": 5})
@@ -150,6 +156,7 @@ async def reset_test_entities(ha_instance: HAInstance):
         except Exception:
             pass
     import asyncio
+
     await asyncio.sleep(1)
     yield
 
@@ -172,11 +179,12 @@ async def async_page():
 async def logged_in_page(async_page):
     """Page with logged-in HA session."""
     import asyncio
+
     await async_page.goto(HA_BASE_URL)
     await async_page.wait_for_selector('input[name="username"]', timeout=30000)
     await async_page.fill('input[name="username"]', AUTOQA_USERNAME)
     await async_page.fill('input[name="password"]', AUTOQA_PASSWORD)
     await async_page.click('button[type="submit"]')
-    await async_page.wait_for_selector('home-assistant', timeout=30000)
+    await async_page.wait_for_selector("home-assistant", timeout=30000)
     await asyncio.sleep(2)
     yield async_page

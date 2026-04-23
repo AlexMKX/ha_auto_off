@@ -4,6 +4,7 @@ Covers behavior: validates via GroupConfig, constructs the internal
 config dict in the shape the manager expects, and rejects invalid
 combinations (empty targets, no sensor sources).
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
@@ -14,9 +15,7 @@ from custom_components.auto_off.const import CONF_GROUPS, DOMAIN
 
 
 class TestSetGroupStructured:
-    async def test_creates_group_from_structured_fields(
-        self, hass, config_entry, sample_set_group_payload
-    ):
+    async def test_creates_group_from_structured_fields(self, hass, config_entry, sample_set_group_payload):
         from custom_components.auto_off import _async_register_services
 
         mock_manager = MagicMock()

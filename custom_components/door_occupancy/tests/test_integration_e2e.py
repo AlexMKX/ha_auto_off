@@ -1,7 +1,9 @@
 """E2E smoke tests for door_occupancy integration."""
+
 from __future__ import annotations
 
 import asyncio
+
 import pytest
 
 pytestmark = pytest.mark.docker_e2e

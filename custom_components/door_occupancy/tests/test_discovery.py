@@ -1,4 +1,5 @@
 """Tests for DoorOccupancyManager discovery behavior."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -27,9 +28,7 @@ class TestDoorOccupancyManager:
     def manager(self, hass, config_entry):
         return DoorOccupancyManager(hass, config_entry, occupancy_timeout=15)
 
-    async def test_finds_door_binary_sensors_locks_and_covers(
-        self, manager, hass
-    ):
+    async def test_finds_door_binary_sensors_locks_and_covers(self, manager, hass):
         def fake_all(domains):
             if domains == ["binary_sensor"]:
                 return [

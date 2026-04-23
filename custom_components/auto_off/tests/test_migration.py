@@ -3,6 +3,7 @@
 Covers the v3 cutover: older entries (version < 3) must fail migration
 with a clear message directing users to the README migration section.
 """
+
 from __future__ import annotations
 
 import logging
@@ -24,12 +25,9 @@ class TestAsyncMigrateEntry:
             result = await async_migrate_entry(hass, entry)
 
         assert result is False
+        assert any("migration" in record.message.lower() for record in caplog.records)
         assert any(
-            "migration" in record.message.lower() for record in caplog.records
-        )
-        assert any(
-            "readme" in record.message.lower() or "reinstall" in record.message.lower()
-            for record in caplog.records
+            "readme" in record.message.lower() or "reinstall" in record.message.lower() for record in caplog.records
         )
 
     async def test_current_version_entry_passes(self, hass):

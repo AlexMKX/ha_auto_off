@@ -1,10 +1,11 @@
 """Pytest fixtures for auto_off tests."""
-import pytest
-import asyncio
-from unittest.mock import MagicMock, AsyncMock, patch
-from homeassistant.core import HomeAssistant
-from homeassistant.config_entries import ConfigEntry
 
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 
 collect_ignore = [
     "test_e2e_playwright.py",

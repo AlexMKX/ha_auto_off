@@ -1,41 +1,46 @@
 """Auto Off integration for Home Assistant."""
+
 import logging
 
 import voluptuous as vol
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import device_registry as dr
 from pydantic import ValidationError
 
-from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.helpers import config_validation as cv, device_registry as dr
-
+from .auto_off import GroupConfig
 from .const import (
-    DOMAIN,
-    CONF_GROUPS,
-    CONF_GROUP_NAME,
-    CONF_SENSORS,
-    CONF_SENSOR_TEMPLATES,
-    CONF_TARGETS,
     CONF_DELAY,
-    SERVICE_SET_GROUP,
-    SERVICE_DELETE_GROUP,
+    CONF_GROUP_NAME,
+    CONF_GROUPS,
+    CONF_SENSOR_TEMPLATES,
+    CONF_SENSORS,
+    CONF_TARGETS,
+    DOMAIN,
     PLATFORMS,
+    SERVICE_DELETE_GROUP,
+    SERVICE_SET_GROUP,
 )
 from .integration_manager import IntegrationManager
-from .auto_off import GroupConfig
 
 _LOGGER = logging.getLogger(__name__)
 
-SERVICE_SET_GROUP_SCHEMA = vol.Schema({
-    vol.Required(CONF_GROUP_NAME): cv.string,
-    vol.Required(CONF_TARGETS): vol.All(cv.ensure_list, [cv.entity_id]),
-    vol.Optional(CONF_SENSORS, default=list): vol.All(cv.ensure_list, [cv.entity_id]),
-    vol.Optional(CONF_SENSOR_TEMPLATES, default=list): vol.All(cv.ensure_list, [cv.string]),
-    vol.Optional(CONF_DELAY, default=0): vol.Any(int, cv.string),
-})
+SERVICE_SET_GROUP_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_GROUP_NAME): cv.string,
+        vol.Required(CONF_TARGETS): vol.All(cv.ensure_list, [cv.entity_id]),
+        vol.Optional(CONF_SENSORS, default=list): vol.All(cv.ensure_list, [cv.entity_id]),
+        vol.Optional(CONF_SENSOR_TEMPLATES, default=list): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional(CONF_DELAY, default=0): vol.Any(int, cv.string),
+    }
+)
 
-SERVICE_DELETE_GROUP_SCHEMA = vol.Schema({
-    vol.Required(CONF_GROUP_NAME): cv.string,
-})
+SERVICE_DELETE_GROUP_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_GROUP_NAME): cv.string,
+    }
+)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -122,9 +127,7 @@ async def _async_register_services(hass: HomeAssistant, entry: ConfigEntry) -> N
             return
 
         await manager.set_group(group_name, config_dict, is_new_group)
-        _LOGGER.info(
-            "Group '%s' %s", group_name, "created" if is_new_group else "updated"
-        )
+        _LOGGER.info("Group '%s' %s", group_name, "created" if is_new_group else "updated")
 
     async def handle_delete_group(call: ServiceCall) -> None:
         """Delete an auto-off group."""
@@ -149,12 +152,8 @@ async def _async_register_services(hass: HomeAssistant, entry: ConfigEntry) -> N
         _LOGGER.info("Group '%s' deleted", group_name)
 
     # Register services
-    hass.services.async_register(
-        DOMAIN, SERVICE_SET_GROUP, handle_set_group, schema=SERVICE_SET_GROUP_SCHEMA
-    )
-    hass.services.async_register(
-        DOMAIN, SERVICE_DELETE_GROUP, handle_delete_group, schema=SERVICE_DELETE_GROUP_SCHEMA
-    )
+    hass.services.async_register(DOMAIN, SERVICE_SET_GROUP, handle_set_group, schema=SERVICE_SET_GROUP_SCHEMA)
+    hass.services.async_register(DOMAIN, SERVICE_DELETE_GROUP, handle_delete_group, schema=SERVICE_DELETE_GROUP_SCHEMA)
 
 
 async def async_remove_config_entry_device(
