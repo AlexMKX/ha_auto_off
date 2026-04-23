@@ -34,7 +34,7 @@ class GroupConfig(BaseModel):
         attribute and are skipped at turn_off time.
         """
         for item in value:
-            if not isinstance(item, str) or not valid_entity_id(item):
+            if not valid_entity_id(item):
                 _LOGGER.warning(
                     "GroupConfig: target %r is not a valid entity_id, "
                     "it will be skipped at turn_off",

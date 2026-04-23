@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 from pydantic import ValidationError
 
@@ -44,9 +46,6 @@ class TestGroupConfig:
             delay=template,
         )
         assert cfg.delay == template
-
-
-import logging
 
 
 class TestGroupConfigTargetSyntax:
