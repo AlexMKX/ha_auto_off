@@ -1,9 +1,7 @@
 {
-  "name": "Auto Off",
+  "name": "Auto Off + Door Occupancy",
   "content_in_root": false,
-  "domains": ["auto_off"],
-  "homeassistant": "2023.0.0",
   "render_readme": true,
-  "iot_class": "local_polling",
-  "filename": "custom_components/auto_off/manifest.json"
-} 
+  "homeassistant": "2025.12.0",
+  "zip_release": false
+}
