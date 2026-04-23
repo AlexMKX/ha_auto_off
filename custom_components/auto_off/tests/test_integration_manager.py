@@ -58,22 +58,14 @@ class TestIntegrationManager:
         with patch(
             "custom_components.auto_off.integration_manager.AutoOffManager"
         ) as mock_aom:
-            with patch(
-                "custom_components.auto_off.integration_manager.DoorOccupancyManager"
-            ) as mock_dom:
-                mock_aom.return_value = MagicMock()
-                mock_dom.return_value = MagicMock()
-                manager = IntegrationManager(hass, config_entry, async_add_entities)
-                manager.auto_off = MagicMock()
-                manager.auto_off.config = {}
-                manager.auto_off._groups = {}
-                manager.auto_off.async_init_groups = AsyncMock()
-                manager.auto_off.async_unload = AsyncMock()
-                manager.door_occupancy = MagicMock()
-                manager.door_occupancy._discover_and_add_sensors = AsyncMock()
-                manager.door_occupancy.periodic_discovery = AsyncMock()
-                manager.door_occupancy.async_unload = AsyncMock()
-                return manager
+            mock_aom.return_value = MagicMock()
+            manager = IntegrationManager(hass, config_entry, async_add_entities)
+            manager.auto_off = MagicMock()
+            manager.auto_off.config = {}
+            manager.auto_off._groups = {}
+            manager.auto_off.async_init_groups = AsyncMock()
+            manager.auto_off.async_unload = AsyncMock()
+            return manager
 
     @pytest.mark.asyncio
     async def test_set_group_creates_new(
@@ -138,7 +130,6 @@ class TestIntegrationManager:
             await manager.async_initialize()
 
         mock_track.assert_called_once()
-        manager.door_occupancy._discover_and_add_sensors.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_async_unload(self, manager):
@@ -150,7 +141,6 @@ class TestIntegrationManager:
 
         mock_remove_listener.assert_called_once()
         manager.auto_off.async_unload.assert_called_once()
-        manager.door_occupancy.async_unload.assert_called_once()
 
     def test_text_platform_ready(self, manager, sample_group_config_dict):
         """Test text_platform_ready creates entities for existing groups."""

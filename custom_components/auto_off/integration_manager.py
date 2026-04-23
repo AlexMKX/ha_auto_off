@@ -10,7 +10,6 @@ from homeassistant.helpers.event import async_track_time_interval
 
 from .auto_off import AutoOffManager, GroupConfig
 from .const import CONF_GROUPS, CONF_POLL_INTERVAL, DOMAIN
-from .door_occupancy import DoorOccupancyManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -51,7 +50,6 @@ class IntegrationManager:
             group_configs,
             on_deadline_change=self._on_deadline_change,
         )
-        self.door_occupancy = DoorOccupancyManager(hass, entry)
         self._lock = asyncio.Lock()
         self._remove_listener = None
         self._groups_data: dict[str, dict] = dict(groups_data)
@@ -125,10 +123,6 @@ class IntegrationManager:
         # Initialize groups (awaits unload of any old groups)
         await self.auto_off.async_init_groups()
 
-        # Initialize door_occupancy with async_add_entities
-        self.door_occupancy._async_add_entities = self._binary_sensor_async_add_entities
-        await self.door_occupancy._discover_and_add_sensors()
-
         poll_interval = self.entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
         self._remove_listener = async_track_time_interval(
             self.hass, self._periodic_worker, timedelta(seconds=poll_interval)
@@ -142,7 +136,6 @@ class IntegrationManager:
             return
         async with self._lock:
             await self.auto_off.periodic_worker()
-            await self.door_occupancy.periodic_discovery()
             self._update_deadline_sensors()
 
     def _update_deadline_sensors(self) -> None:
@@ -289,7 +282,6 @@ class IntegrationManager:
             self._remove_listener()
             self._remove_listener = None
         await self.auto_off.async_unload()
-        await self.door_occupancy.async_unload()
         self._sensor_entities.clear()
         self._deadline_entities.clear()
         self._text_entities.clear()
