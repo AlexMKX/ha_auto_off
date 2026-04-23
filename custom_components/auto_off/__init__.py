@@ -66,6 +66,29 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return unload_ok
 
 
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Handle config entry migration for auto_off.
+
+    Version 3 introduces a breaking change to the group payload shape
+    (structured fields instead of a YAML string) and moves occupancy
+    sensors to the separate door_occupancy integration. Auto-migration
+    is intentionally not implemented; users are asked to delete the
+    old entry and recreate groups via the new set_group service.
+    See docs/superpowers/specs/2026-04-22-split-integrations-design.md
+    section 'Migration (for users)'.
+    """
+    if entry.version >= 3:
+        return True
+
+    _LOGGER.error(
+        "Auto Off config entry at version %s requires manual migration. "
+        "Delete this integration entry and reinstall per the README "
+        "migration section.",
+        entry.version,
+    )
+    return False
+
+
 async def _async_register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Register Auto Off services."""
 
