@@ -69,8 +69,8 @@ class TestIntegrationManager:
     async def test_set_group_creates_new(
         self, manager, sample_group_config_dict
     ):
-        """Test set_group creates a new group."""
         manager._text_async_add_entities = MagicMock()
+        manager._sensor_async_add_entities = MagicMock()
 
         await manager.set_group("new_group", sample_group_config_dict, is_new=True)
 
@@ -78,6 +78,10 @@ class TestIntegrationManager:
         assert manager._groups_data["new_group"] == sample_group_config_dict
         manager.auto_off.async_init_groups.assert_awaited_once()
         manager._text_async_add_entities.assert_called_once()
+        # Exactly one deadline sensor is created, no config sensor.
+        manager._sensor_async_add_entities.assert_called_once()
+        added = manager._sensor_async_add_entities.call_args[0][0]
+        assert len(added) == 1
 
     @pytest.mark.asyncio
     async def test_set_group_updates_existing(
