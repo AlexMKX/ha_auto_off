@@ -23,6 +23,10 @@ template:
         unique_id: test_door
         state: "{{ states('input_boolean.test_door_state') }}"
         device_class: door
+      - name: "Late Motion"
+        unique_id: late_motion
+        state: "{{ states('input_boolean.late_motion_state') }}"
+        device_class: motion
 
   - sensor:
       - name: "Test Sensor"
@@ -49,6 +53,12 @@ input_boolean:
     initial: false
   test_switch_state:
     name: Test Switch State
+    initial: false
+  late_motion_state:
+    name: Late Motion State
+    initial: false
+  late_target_state:
+    name: Late Target State
     initial: false
 
 # Input numbers for numeric sensors
@@ -94,6 +104,18 @@ light:
           service: input_boolean.turn_off
           target:
             entity_id: input_boolean.test_light_2_state
+      late_target:
+        friendly_name: "Late Target"
+        unique_id: late_target
+        value_template: "{{ states('input_boolean.late_target_state') }}"
+        turn_on:
+          service: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.late_target_state
+        turn_off:
+          service: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.late_target_state
 
 # Switch entities for testing
 switch:
