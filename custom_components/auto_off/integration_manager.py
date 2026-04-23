@@ -178,6 +178,13 @@ class IntegrationManager:
             _LOGGER.exception(f"Failed to set group '{group_name}': {e}")
             raise
 
+    def get_group_config(self, group_name: str) -> GroupConfig | None:
+        """Return the active GroupConfig for a group, or None during teardown."""
+        group = self.auto_off._groups.get(group_name)
+        if group is None:
+            return None
+        return group._config
+
     async def update_group_config(self, group_name: str, config_dict: dict) -> None:
         """Update group config from text entity edit."""
         await self.set_group(group_name, config_dict, is_new=False)

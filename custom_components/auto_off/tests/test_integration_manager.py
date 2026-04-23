@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from custom_components.auto_off.const import CONF_GROUPS, CONF_POLL_INTERVAL, DOMAIN
 from custom_components.auto_off.integration_manager import (
     IntegrationManager,
     parse_group_configs,
@@ -147,3 +146,33 @@ class TestIntegrationManager:
 
         mock_add_entities.assert_called_once()
         assert len(mock_add_entities.call_args[0][0]) == 1
+
+
+class TestGetGroupConfig:
+    def test_returns_active_group_config(self, hass, config_entry):
+        config_entry.data = {
+            "poll_interval": 15,
+            "groups": {
+                "kitchen": {
+                    "targets": ["light.kitchen"],
+                    "sensors": ["binary_sensor.motion"],
+                    "delay": 5,
+                }
+            },
+        }
+        mgr = IntegrationManager(hass, config_entry)
+        # Inject a SensorGroup-like stub so get_group_config can read it.
+        from unittest.mock import MagicMock
+        from custom_components.auto_off.auto_off import GroupConfig
+        stub_group = MagicMock()
+        stub_group._config = GroupConfig(
+            targets=["light.kitchen"],
+            sensors=["binary_sensor.motion"],
+            delay=5,
+        )
+        mgr.auto_off._groups["kitchen"] = stub_group
+        assert mgr.get_group_config("kitchen").targets == ["light.kitchen"]
+
+    def test_returns_none_for_unknown_group(self, hass, config_entry):
+        mgr = IntegrationManager(hass, config_entry)
+        assert mgr.get_group_config("missing") is None
