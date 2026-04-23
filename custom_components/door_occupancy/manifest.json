@@ -1,7 +1,7 @@
 {
   "domain": "door_occupancy",
   "name": "Door Occupancy",
-  "version": "0.0.1",
+  "version": "2604231631",
   "documentation": "https://github.com/AlexMKX/auto_off",
   "requirements": [],
   "dependencies": [],
