@@ -5,7 +5,10 @@ from collections.abc import Callable
 from typing import Any
 
 from homeassistant.core import HomeAssistant, State, valid_entity_id
-from homeassistant.helpers.event import async_track_state_change_event, async_track_template
+from homeassistant.helpers.event import (
+    async_track_state_change_event,
+    async_track_template,
+)
 from homeassistant.helpers.template import Template
 from pydantic import BaseModel, field_validator, model_validator
 
@@ -36,8 +39,7 @@ class GroupConfig(BaseModel):
         for item in value:
             if not valid_entity_id(item):
                 _LOGGER.warning(
-                    "GroupConfig: target %r is not a valid entity_id, "
-                    "it will be skipped at turn_off",
+                    "GroupConfig: target %r is not a valid entity_id, " "it will be skipped at turn_off",
                     item,
                 )
         return value
@@ -265,9 +267,7 @@ class Target:
 
         try:
             self._last_known_good_state = await self.is_on()
-            self._unsub = async_track_state_change_event(
-                self.hass, [self.entity_id], self._handle_my_changes
-            )
+            self._unsub = async_track_state_change_event(self.hass, [self.entity_id], self._handle_my_changes)
             _LOGGER.debug(
                 "Target '%s' started tracking, initial state: %s",
                 self.entity_id,
@@ -288,15 +288,11 @@ class Target:
 
         current = await self.is_on()
         if self._last_known_good_state == current:
-            _LOGGER.debug(
-                "Target '%s' state unchanged (%s), ignoring", self.entity_id, current
-            )
+            _LOGGER.debug("Target '%s' state unchanged (%s), ignoring", self.entity_id, current)
             return
 
         old = self._last_known_good_state
-        _LOGGER.info(
-            "Target '%s' state changed: %s -> %s", self.entity_id, old, current
-        )
+        _LOGGER.info("Target '%s' state changed: %s -> %s", self.entity_id, old, current)
         self._last_known_good_state = current
         if self._on_change_callback:
             await self._on_change_callback(self, old, current)
@@ -322,9 +318,7 @@ class Target:
 
         domain = self.entity_id.split(".")[0]
         try:
-            await self.hass.services.async_call(
-                domain, "turn_off", {"entity_id": self.entity_id}, blocking=True
-            )
+            await self.hass.services.async_call(domain, "turn_off", {"entity_id": self.entity_id}, blocking=True)
             _LOGGER.info("Target '%s' turned OFF", self.entity_id)
         except Exception as e:
             _LOGGER.error("Failed to turn off target '%s': %s", self.entity_id, e)
@@ -517,8 +511,7 @@ class SensorGroup:
         )
 
     async def _log_state_transitions(self, state: dict):
-        """Logs detailed information about state transitions"""
-        # Collect statuses for logging
+        """Log current sensor and target states."""
         sensor_statuses = []
         for s in self._sensors:
             try:
@@ -531,19 +524,9 @@ class SensorGroup:
         for t in self._targets:
             try:
                 status = await t.is_on()
-                # Show how many entity_ids are active for templates
-                if hasattr(t, "_current_entity_ids") and len(t._current_entity_ids) > 1:
-                    active_count = 0
-                    for eid in t._current_entity_ids:
-                        state_obj = self.hass.states.get(eid)
-                        if state_obj and state_obj.state not in ("unavailable", "unknown", "off"):
-                            active_count += 1
-                    status_str = f"{status} ({active_count}/{len(t._current_entity_ids)} active)"
-                else:
-                    status_str = str(status)
             except Exception as e:
-                status_str = f"error: {e}"
-            target_statuses.append(f"{getattr(t, 'raw', str(t))}: {status_str}")
+                status = f"error: {e}"
+            target_statuses.append(f"{t.entity_id}: {status}")
 
         _LOGGER.debug(f"[Group {self.group_id}] Sensors: {sensor_statuses} | Targets: {target_statuses}")
         _LOGGER.debug(
