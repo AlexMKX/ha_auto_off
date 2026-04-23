@@ -71,7 +71,7 @@ class IntegrationManager:
         for group_name in self._groups_data:
             if group_name in self._deadline_entities:
                 continue
-            deadline_entity = DeadlineSensorEntity(self.hass, self.entry, group_name)
+            deadline_entity = DeadlineSensorEntity(self.hass, self.entry, group_name, self)
             self._deadline_entities[group_name] = deadline_entity
             new_entities.append(deadline_entity)
 
@@ -156,7 +156,7 @@ class IntegrationManager:
             if is_new and self._sensor_async_add_entities:
                 from .sensor import DeadlineSensorEntity
 
-                deadline_entity = DeadlineSensorEntity(self.hass, self.entry, group_name)
+                deadline_entity = DeadlineSensorEntity(self.hass, self.entry, group_name, self)
                 self._deadline_entities[group_name] = deadline_entity
                 self._sensor_async_add_entities([deadline_entity])
                 _LOGGER.info("Created deadline sensor for new group '%s'", group_name)
