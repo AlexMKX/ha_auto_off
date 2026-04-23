@@ -9,9 +9,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
-from custom_components.auto_off.const import CONF_GROUPS, DOMAIN
+from custom_components.auto_off.const import DOMAIN
 
 
 class TestSetGroupStructured:
