@@ -7,21 +7,33 @@ from collections.abc import Callable
 from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers.event import async_track_state_change_event, async_track_template
 from homeassistant.helpers.template import Template
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, model_validator
 
-_LOGGER = logging.getLogger(__name__) 
+_LOGGER = logging.getLogger(__name__)
+
 
 class GroupConfig(BaseModel):
-    sensors: list[str]
-    targets: list[str]
-    delay: int | str | None = 0
+    """Configuration for a single auto-off group.
 
-    @field_validator('delay')
-    @classmethod
-    def validate_delay(cls, v):
-        if v is None:
-            return 0
-        return v
+    A group is active while any sensor (entity or template) reports `on`.
+    Once all sensors are off and any target is on, the delay starts and
+    eventually turns off every target.
+    """
+
+    targets: list[str]
+    sensors: list[str] = []
+    sensor_templates: list[str] = []
+    delay: int | str = 0
+
+    @model_validator(mode="after")
+    def _require_targets_and_sensor_source(self) -> "GroupConfig":
+        if not self.targets:
+            raise ValueError("'targets' must be non-empty")
+        if not self.sensors and not self.sensor_templates:
+            raise ValueError(
+                "At least one of 'sensors' or 'sensor_templates' must be non-empty"
+            )
+        return self
 
 
 class AutoOffConfig(BaseModel):
@@ -34,17 +46,27 @@ class IntegrationConfig(BaseModel):
 
 
 class Sensor:
-    def __init__(self, hass: HomeAssistant, sensor_def, on_state_change_callback):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        raw: str,
+        kind: str,
+        on_state_change_callback,
+    ):
+        """Create a sensor wrapper.
+
+        kind: one of "entity" or "template". Determines the tracking path
+        and how is_on() resolves.
+        """
+        if kind not in ("entity", "template"):
+            raise ValueError(f"Unsupported sensor kind: {kind!r}")
         self.hass = hass
-        self.raw = sensor_def
+        self.raw = raw
+        self._kind = kind
+        self._is_template = kind == "template"
         self._on_change_callback = on_state_change_callback
         self._unsub = None
-        self._is_template = self._detect_template()
-        self._last_known_good_state: bool | None = None  # Last valid state
-
-    def _detect_template(self) -> bool:
-        """Determines if sensor_def is a template"""
-        return isinstance(self.raw, str) and '{{' in self.raw and '}}' in self.raw
+        self._last_known_good_state: bool | None = None
 
     async def start_tracking(self):
         """Subscribes to its own state changes"""
@@ -389,18 +411,33 @@ class SensorGroup:
     def _init_from_config(self):
         self._sensors = []
         self._targets = []
-        for sensor in self._config.sensors:
+        for sensor_id in self._config.sensors:
             try:
-                sensor_obj = Sensor(self.hass, sensor, self._on_sensor_state_change)
+                sensor_obj = Sensor(
+                    self.hass,
+                    sensor_id,
+                    kind="entity",
+                    on_state_change_callback=self._on_sensor_state_change,
+                )
                 self._sensors.append(sensor_obj)
-                # Sensors start tracking their own changes
                 asyncio.create_task(sensor_obj.start_tracking())
             except Exception as e:
-                _LOGGER.error(f"Sensor '{sensor}' is invalid and will be ignored: {e}")
+                _LOGGER.error(f"Sensor entity '{sensor_id}' is invalid and will be ignored: {e}")
+        for template_str in self._config.sensor_templates:
+            try:
+                sensor_obj = Sensor(
+                    self.hass,
+                    template_str,
+                    kind="template",
+                    on_state_change_callback=self._on_sensor_state_change,
+                )
+                self._sensors.append(sensor_obj)
+                asyncio.create_task(sensor_obj.start_tracking())
+            except Exception as e:
+                _LOGGER.error(f"Sensor template '{template_str}' is invalid and will be ignored: {e}")
         for target_def in self._config.targets:
             target = Target(self.hass, target_def, self._on_target_state_change)
             self._targets.append(target)
-            # Targets start tracking their own changes
             asyncio.create_task(target.start_tracking())
 
     async def all_sensors_off(self):

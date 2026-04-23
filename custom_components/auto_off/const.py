@@ -1,5 +1,7 @@
 DOMAIN = "auto_off"
 CONF_SENSORS = "sensors"
+CONF_SENSOR_TEMPLATES = "sensor_templates"
+CONFIG_VERSION = 3
 CONF_TARGETS = "targets"
 CONF_DELAY = "delay"
 CONF_POLL_INTERVAL = "poll_interval"
