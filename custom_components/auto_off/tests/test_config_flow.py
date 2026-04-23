@@ -59,31 +59,6 @@ class TestAutoOffConfigFlow:
         call_kwargs = mock_create.call_args[1]
         assert call_kwargs["data"][CONF_POLL_INTERVAL] == 15  # default
 
-    @pytest.mark.asyncio
-    async def test_step_import_creates_entry(self, flow):
-        """Test import step creates entry from YAML config."""
-        import_config = {
-            CONF_POLL_INTERVAL: 20,
-            "groups": {
-                "test_group": {
-                    "sensors": ["binary_sensor.test"],
-                    "targets": ["light.test"],
-                    "delay": 5,
-                }
-            }
-        }
-
-        with patch.object(flow, 'async_set_unique_id', new_callable=AsyncMock):
-            with patch.object(flow, '_abort_if_unique_id_configured'):
-                with patch.object(flow, 'async_create_entry') as mock_create:
-                    mock_create.return_value = {"type": "create_entry"}
-                    result = await flow.async_step_import(import_config)
-
-        mock_create.assert_called_once()
-        call_kwargs = mock_create.call_args[1]
-        assert call_kwargs["data"][CONF_POLL_INTERVAL] == 20
-        assert "test_group" in call_kwargs["data"][CONF_GROUPS]
-
 
 class TestAutoOffOptionsFlow:
     """Test the options flow.

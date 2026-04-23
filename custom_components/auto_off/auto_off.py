@@ -36,15 +36,6 @@ class GroupConfig(BaseModel):
         return self
 
 
-class AutoOffConfig(BaseModel):
-    groups: dict[str, GroupConfig]
-
-class IntegrationConfig(BaseModel):
-    poll_interval: int = 15
-    doors: dict | None = None
-    groups: dict[str, GroupConfig]
-
-
 class Sensor:
     def __init__(
         self,
@@ -62,7 +53,6 @@ class Sensor:
             raise ValueError(f"Unsupported sensor kind: {kind!r}")
         self.hass = hass
         self.raw = raw
-        self._kind = kind
         self._is_template = kind == "template"
         self._on_change_callback = on_state_change_callback
         self._unsub = None
@@ -727,7 +717,6 @@ class AutoOffManager:
         self.hass = hass
         self.config = config
         self._on_deadline_change = on_deadline_change
-        self._targets_state: dict[str, dict[str, Any]] = {}
         self._groups: dict[str, SensorGroup] = {}
         self._tasks: list[Any] = []
 
@@ -761,12 +750,6 @@ class AutoOffManager:
                 await group.check_and_set_deadline()
         except Exception as e:
             _LOGGER.error(f"Scheduled config reload failed: {e}")
-
-    async def async_update_config(self, new_config: dict[str, GroupConfig]):
-        """Update configuration and reinitialize groups."""
-        self.config = new_config
-        await self.async_init_groups()
-        _LOGGER.info("AutoOffManager configuration updated with %d groups", len(new_config))
 
     async def async_unload(self):
         """Clean up resources."""

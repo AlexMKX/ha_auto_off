@@ -41,26 +41,6 @@ class AutoOffConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }),
         )
 
-    async def async_step_import(self, import_config):
-        """Handle import from YAML (legacy support)."""
-        await self.async_set_unique_id(DOMAIN)
-        self._abort_if_unique_id_configured()
-
-        # Convert YAML groups to new format
-        groups = {}
-        if "groups" in import_config:
-            import yaml
-            for group_name, group_config in import_config["groups"].items():
-                groups[group_name] = yaml.dump(group_config, default_flow_style=False)
-
-        return self.async_create_entry(
-            title="Auto Off",
-            data={
-                CONF_POLL_INTERVAL: import_config.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL),
-                CONF_GROUPS: groups,
-            },
-        )
-
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
