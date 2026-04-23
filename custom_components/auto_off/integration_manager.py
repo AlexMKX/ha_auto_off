@@ -174,6 +174,12 @@ class IntegrationManager:
             elif group_name in self._text_entities:
                 self._text_entities[group_name].update_config(config_dict)
 
+            # Refresh attributes on the deadline sensor so the UI reflects the
+            # new group config immediately.
+            deadline_entity = self._deadline_entities.get(group_name)
+            if deadline_entity is not None and not is_new:
+                deadline_entity.async_write_ha_state()
+
         except Exception as e:
             _LOGGER.exception(f"Failed to set group '{group_name}': {e}")
             raise
@@ -186,7 +192,7 @@ class IntegrationManager:
         return group._config
 
     async def update_group_config(self, group_name: str, config_dict: dict) -> None:
-        """Update group config from text entity edit."""
+        """Update group config from text entity edit or set_group service."""
         await self.set_group(group_name, config_dict, is_new=False)
 
         # Also update config entry
@@ -195,6 +201,11 @@ class IntegrationManager:
         new_data = dict(self.entry.data)
         new_data[CONF_GROUPS] = current_groups
         self.hass.config_entries.async_update_entry(self.entry, data=new_data)
+
+        # Refresh UI attributes on the deadline sensor.
+        deadline_entity = self._deadline_entities.get(group_name)
+        if deadline_entity is not None:
+            deadline_entity.async_write_ha_state()
 
     async def delete_group(self, group_name: str) -> None:
         """Delete a group."""
