@@ -38,6 +38,29 @@ Copy `custom_components/auto_off/` into `<config>/custom_components/` and
 restart Home Assistant. For Door Occupancy, clone the companion repo and
 copy `custom_components/door_occupancy/` similarly.
 
+## Entities created per group
+
+Each auto_off group creates a Home Assistant device `Auto Off: <group_name>` with the following entities:
+
+- `sensor.auto_off_<group>_deadline` — current deadline (human-readable)
+  with a `deadline_iso` attribute.
+- `text.auto_off_<group>_delay_minutes` — editable delay (supports templates).
+- `binary_sensor.auto_off_<group>_sensors` — OR-group over the configured
+  `sensors`. Its `entity_id` attribute lists the member binary_sensors;
+  `sensor_templates` attribute lists any configured Jinja templates.
+- `<domain>.auto_off_<group>_targets_<domain>` — one group entity per
+  target domain (e.g. `light`, `switch`, `fan`, `cover`, `media_player`,
+  `lock`, `valve`). Each aggregates the targets in that domain and turns
+  them all off at deadline expiry.
+
+Targets in domains without a HA group platform (e.g. `scene`) do not get
+a group entity; they are turned off individually at deadline expiry.
+
+> **Breaking change (since group entities):** The `extra_state_attributes`
+> of the deadline sensor no longer includes `targets`, `sensors`, or
+> `sensor_templates`. If you have automations reading those attributes,
+> switch to the new group entities listed above.
+
 ## Migration from the unified 2512.x release
 
 Starting with release `2604231655`, the integration is split. This is a
