@@ -105,16 +105,15 @@ class HAInstance:
     async def create_auto_off_group(
         self, group_name: str, sensors: list[str], targets: list[str], delay: int = 0
     ) -> None:
-        """Create an auto_off group via YAML-only set_group service."""
-        import yaml
-
-        config_yaml = yaml.dump({"sensors": sensors, "targets": targets, "delay": delay})
+        """Create an auto_off group via the structured set_group service."""
         await self.call_service(
             "auto_off",
             "set_group",
             {
                 "group_name": group_name,
-                "config": config_yaml,
+                "sensors": sensors,
+                "targets": targets,
+                "delay": delay,
             },
         )
 
