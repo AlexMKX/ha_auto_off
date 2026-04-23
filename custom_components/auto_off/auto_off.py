@@ -230,166 +230,115 @@ class Sensor:
 
 
 class Target:
-    def __init__(self, hass: HomeAssistant, target_def: str, on_state_change_callback):
+    """Single-entity wrapper for turn-off targets.
+
+    `entity_id` must be a syntactically valid Home Assistant entity id. If
+    not, the Target is constructed with `_skip=True`; all subsequent
+    operations are no-ops. Missing entities in the state machine are handled
+    separately at turn_off time (warn + skip).
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entity_id: str,
+        on_state_change_callback,
+    ):
         self.hass = hass
-        self.raw = target_def  # Can store either entity_id or template
+        self.entity_id = entity_id
         self._on_change_callback = on_state_change_callback
-        self._unsub_list: list = []  # List of subscriptions for multiple entity_ids
-        self._last_known_good_state: bool | None = None  # Last valid state
-        self._is_template = self._detect_template()
-        self._current_entity_ids: list[str] = []  # Current list of entity_ids
-
-    def _detect_template(self) -> bool:
-        """Determines if target_def is a template"""
-        return isinstance(self.raw, str) and "{{" in self.raw and "}}" in self.raw
-
-    async def _get_entity_ids(self) -> list[str]:
-        """Gets list of entity_ids from template or returns single entity_id"""
-        if self._is_template:
-            return await self._render_template_entities()
-        else:
-            return [self.raw] if self.raw else []
-
-    async def _render_template_entities(self) -> list[str]:
-        """Renders template and returns list of entity_ids"""
-        try:
-            tpl = Template(str(self.raw), self.hass)
-            rendered = tpl.async_render()
-
-            # Template should return a list
-            if isinstance(rendered, list):
-                # Filter only valid entity_ids
-                entity_ids = [str(e) for e in rendered if isinstance(e, str) and "." in str(e)]
-                _LOGGER.debug(f"Template target '{self.raw}' rendered to entities: {entity_ids}")
-                return entity_ids
-            else:
-                _LOGGER.warning(f"Template target '{self.raw}' rendered to non-list: {rendered}")
-                return []
-        except Exception as e:
-            _LOGGER.error(f"Template target '{self.raw}' failed to render: {e}")
-            return []
+        self._unsub = None
+        self._last_known_good_state: bool | None = None
+        self._skip = not valid_entity_id(entity_id)
 
     async def start_tracking(self):
-        """Subscribes to its own state changes"""
-        if self._unsub_list:
-            return  # Already subscribed
-
-        # Get current list of entity_ids
-        self._current_entity_ids = await self._get_entity_ids()
-
-        if not self._current_entity_ids:
-            _LOGGER.warning(f"Target '{self.raw}' has no valid entities, skipping tracking")
+        """Subscribe to state changes for this single entity."""
+        if self._skip or self._unsub is not None:
             return
 
-        # Check that all entities exist
-        valid_entities = []
-        for entity_id in self._current_entity_ids:
-            if self.hass.states.get(entity_id) is not None:
-                valid_entities.append(entity_id)
-            else:
-                _LOGGER.warning(f"Target entity {entity_id} does not exist, skipping")
-
-        if not valid_entities:
-            _LOGGER.warning(f"Target '{self.raw}' has no existing entities, skipping tracking")
-            return
-
-        self._current_entity_ids = valid_entities
-
-        # Initialize last valid state
-        self._last_known_good_state = await self.is_on()
-
-        # Subscribe to changes for each entity
-        for entity_id in self._current_entity_ids:
-            unsub = async_track_state_change_event(self.hass, [entity_id], self._handle_my_changes)
-            self._unsub_list.append(unsub)
-
-        _LOGGER.debug(
-            f"Target '{self.raw}' started tracking {len(self._current_entity_ids)} entities, initial state: {self._last_known_good_state}"
-        )
-
-    async def _handle_my_changes(self, event):
-        """Decides what's important and what's not"""
-        entity_id = event.data.get("entity_id")
-        new_state = event.data.get("new_state")
-
-        # Ignore invalid states
-        if not new_state or new_state.state in ("unknown", "unavailable"):
-            _LOGGER.debug(
-                f"Target entity {entity_id} state is invalid ({new_state.state if new_state else 'None'}), ignoring"
+        if self.hass.states.get(self.entity_id) is None:
+            _LOGGER.warning(
+                "Target %s does not exist in state machine, skipping tracking",
+                self.entity_id,
             )
             return
 
-        # Get current valid state of all targets
-        current_target_state = await self.is_on()
+        try:
+            self._last_known_good_state = await self.is_on()
+            self._unsub = async_track_state_change_event(
+                self.hass, [self.entity_id], self._handle_my_changes
+            )
+            _LOGGER.debug(
+                "Target '%s' started tracking, initial state: %s",
+                self.entity_id,
+                self._last_known_good_state,
+            )
+        except Exception as e:
+            _LOGGER.error("Failed to track target '%s': %s", self.entity_id, e)
 
-        # Compare with last known state
-        if self._last_known_good_state == current_target_state:
-            _LOGGER.debug(f"Target '{self.raw}' overall state unchanged ({current_target_state}), ignoring")
+    async def _handle_my_changes(self, event):
+        new_state = event.data.get("new_state")
+        if not new_state or new_state.state in ("unknown", "unavailable"):
+            _LOGGER.debug(
+                "Target %s state is invalid (%s), ignoring",
+                self.entity_id,
+                new_state.state if new_state else "None",
+            )
             return
 
-        # Real state change!
-        old_state_str = "None" if self._last_known_good_state is None else str(self._last_known_good_state)
+        current = await self.is_on()
+        if self._last_known_good_state == current:
+            _LOGGER.debug(
+                "Target '%s' state unchanged (%s), ignoring", self.entity_id, current
+            )
+            return
+
+        old = self._last_known_good_state
         _LOGGER.info(
-            f"Target '{self.raw}' state changed: {old_state_str} -> {current_target_state} (triggered by {entity_id})"
+            "Target '%s' state changed: %s -> %s", self.entity_id, old, current
         )
-
-        # Update last valid state
-        old_known_state = self._last_known_good_state
-        self._last_known_good_state = current_target_state
-
-        # Notify group about IMPORTANT state change
+        self._last_known_good_state = current
         if self._on_change_callback:
-            await self._on_change_callback(self, old_known_state, current_target_state)
+            await self._on_change_callback(self, old, current)
 
-    async def is_on(self):
-        """Checks if at least one target from the list is on"""
-        # If template, need to update entity_ids list
-        if self._is_template:
-            self._current_entity_ids = await self._get_entity_ids()
-
-        if not self._current_entity_ids:
+    async def is_on(self) -> bool:
+        if self._skip:
             return False
-
-        # Target is considered on if at least one entity is on
-        for entity_id in self._current_entity_ids:
-            state = self.hass.states.get(entity_id)
-            if state is not None and state.state not in ("unavailable", "unknown", "off"):
-                return True
-
-        return False
+        state = self.hass.states.get(self.entity_id)
+        if state is None:
+            return False
+        return state.state not in ("unavailable", "unknown", "off")
 
     async def turn_off(self):
-        """Turns off all entity_ids"""
-        tasks = []
-        for entity_id in self._current_entity_ids:
-            domain = entity_id.split(".")[0]
-            service = "turn_off"
-            task = self.hass.services.async_call(domain, service, {"entity_id": entity_id}, blocking=True)
-            tasks.append(task)
+        if self._skip:
+            return
+        state = self.hass.states.get(self.entity_id)
+        if state is None:
+            _LOGGER.warning(
+                "Target %s not found in state machine, skipping turn_off",
+                self.entity_id,
+            )
+            return
 
-        if tasks:
-            try:
-                await asyncio.gather(*tasks)
-                _LOGGER.info(f"Target '{self.raw}' turned OFF all {len(self._current_entity_ids)} entities")
-            except Exception as e:
-                _LOGGER.error(f"Failed to turn off target '{self.raw}': {e}")
+        domain = self.entity_id.split(".")[0]
+        try:
+            await self.hass.services.async_call(
+                domain, "turn_off", {"entity_id": self.entity_id}, blocking=True
+            )
+            _LOGGER.info("Target '%s' turned OFF", self.entity_id)
+        except Exception as e:
+            _LOGGER.error("Failed to turn off target '%s': %s", self.entity_id, e)
 
     async def stop_tracking(self):
-        """Unsubscribes from events"""
-        for unsub in self._unsub_list:
-            if unsub:
-                unsub()
-        self._unsub_list.clear()
-        self._current_entity_ids.clear()
-        _LOGGER.debug(f"Target '{self.raw}' stopped tracking")
+        if self._unsub:
+            self._unsub()
+            self._unsub = None
+            _LOGGER.debug("Target '%s' stopped tracking", self.entity_id)
 
-    # For backward compatibility
     @property
-    def entity_id(self) -> str:
-        """Returns first entity_id for compatibility or string representation"""
-        if self._current_entity_ids:
-            return self._current_entity_ids[0]
-        return self.raw
+    def raw(self) -> str:
+        """Back-compat alias used in SensorGroup log statements."""
+        return self.entity_id
 
 
 class SensorGroup:
