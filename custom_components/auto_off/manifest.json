@@ -1,7 +1,7 @@
 {
   "domain": "auto_off",
   "name": "Auto Off",
-  "version": "2604231655",
+  "version": "2604231715",
   "documentation": "https://github.com/AlexMKX/auto_off",
   "requirements": [
     "pydantic"

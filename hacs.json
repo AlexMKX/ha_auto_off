@@ -1,5 +1,5 @@
 {
-  "name": "Auto Off + Door Occupancy",
+  "name": "Auto Off",
   "content_in_root": false,
   "render_readme": true,
   "homeassistant": "2025.12.0",
