@@ -43,10 +43,12 @@ copy `custom_components/door_occupancy/` similarly.
 Starting with release `2604231655`, the integration is split. This is a
 **breaking change** for users of the old unified `auto_off`.
 
-1. Update HACS to the latest Auto Off release (auto_off v2 config entries
-   are now migrated to v3 automatically; legacy `*_occupancy` entities
-   that used to be owned by auto_off are cleaned from the registry on
-   next restart).
+1. Update HACS to the latest Auto Off release. v2 config entries are
+   migrated to v3 automatically on restart. Any legacy `*_occupancy`
+   entities that used to be owned by auto_off will remain as orphaned
+   entries in the entity registry — remove them manually via
+   Settings → Devices & services → Entities, or install **Door Occupancy**
+   which will recreate them with the same unique_ids and take ownership.
 2. *(Optional)* Install **Door Occupancy** from the companion repo if you
    want auto-discovered occupancy sensors.
 3. If you recreated groups from scratch, use the new `auto_off.set_group`
