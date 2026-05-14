@@ -100,7 +100,7 @@ jobs:
         
         try:
             from auto_off.auto_off import GroupConfig, AutoOffManager
-            from auto_off.const import DOMAIN, CONF_CONFIG
+            from auto_off.const import DOMAIN, CONF_GROUPS, CONF_POLL_INTERVAL
             print('✓ All imports work correctly')
         except Exception as e:
             print(f'❌ Error: {e}')
