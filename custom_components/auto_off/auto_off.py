@@ -100,20 +100,34 @@ class Sensor:
             _LOGGER.error(f"Failed to track sensor template '{self.raw}': {e}")
 
     async def _start_entity_tracking(self):
-        """Subscribes to entity changes"""
+        """Subscribes to entity changes.
+
+        Subscription is installed unconditionally as long as the configured
+        ``entity_id`` is syntactically valid; ``async_track_state_change_event``
+        accepts entity_ids that do not exist in ``hass.states`` yet and starts
+        firing the callback as soon as they appear. This avoids a start-up
+        race with integrations that register their entities late
+        (e.g. Magic Areas), which previously left the sensor permanently
+        un-subscribed and forced the group into poll-only operation.
+        """
         entity_id = self.get_entity_id()
         if not entity_id:
             _LOGGER.warning(f"Sensor '{self.raw}' is not a valid entity or template")
             return
 
-        # Check that entity exists
-        if self.hass.states.get(entity_id) is None:
-            _LOGGER.warning(f"Sensor entity {entity_id} does not exist, skipping tracking")
-            return
-
         try:
-            # Initialize last valid state
-            self._last_known_good_state = await self._check_entity_state()
+            # If the entity already exists, capture its current state so the
+            # first state-change comparison in ``_handle_entity_change`` works
+            # against a real baseline. Otherwise leave it as ``None`` and let
+            # the first valid event populate it.
+            entity_present = self.hass.states.get(entity_id) is not None
+            if entity_present:
+                self._last_known_good_state = await self._check_entity_state()
+            else:
+                _LOGGER.info(
+                    "Sensor entity %s does not exist yet, subscribing for later registration",
+                    entity_id,
+                )
 
             self._unsub = async_track_state_change_event(self.hass, [entity_id], self._handle_entity_change)
             _LOGGER.debug(f"Sensor entity '{entity_id}' started tracking, initial state: {self._last_known_good_state}")
@@ -254,19 +268,30 @@ class Target:
         self._skip = not valid_entity_id(entity_id)
 
     async def start_tracking(self):
-        """Subscribe to state changes for this single entity."""
+        """Subscribe to state changes for this single entity.
+
+        Subscription is installed unconditionally as long as the configured
+        ``entity_id`` is syntactically valid (``self._skip`` covers the
+        invalid case at construction time). When the entity does not yet
+        exist in ``hass.states``, ``async_track_state_change_event`` still
+        installs a listener and starts firing the callback as soon as the
+        entity is registered. This avoids a start-up race with integrations
+        that register their entities late, which previously left the target
+        permanently un-subscribed.
+        """
         if self._skip or self._unsub is not None:
             return
 
-        if self.hass.states.get(self.entity_id) is None:
-            _LOGGER.warning(
-                "Target %s does not exist in state machine, skipping tracking",
-                self.entity_id,
-            )
-            return
-
         try:
-            self._last_known_good_state = await self.is_on()
+            entity_present = self.hass.states.get(self.entity_id) is not None
+            if entity_present:
+                self._last_known_good_state = await self.is_on()
+            else:
+                _LOGGER.info(
+                    "Target %s does not exist yet, subscribing for later registration",
+                    self.entity_id,
+                )
+
             self._unsub = async_track_state_change_event(self.hass, [self.entity_id], self._handle_my_changes)
             _LOGGER.debug(
                 "Target '%s' started tracking, initial state: %s",
