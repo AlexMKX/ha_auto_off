@@ -57,13 +57,18 @@ Per-group fields on `GroupConfig`:
 
 | field | type | default | meaning |
 |---|---|---|---|
-| `ensure_window` | `int \| str` | `60` | Total seconds the ensure loop is allowed to run. |
-| `ensure_interval` | `int \| str` | `10` | Pause between retry passes inside the loop. Should be `>=` the upstream device timeout (z2m default 10s) to avoid wasted publishes. |
+| `ensure_window` | `int \| str` | `60` | Total **seconds** the ensure loop is allowed to run. |
+| `ensure_interval` | `int \| str` | `10` | Pause in **seconds** between retry passes. Should be `>=` the upstream device timeout (z2m default 10s) to avoid wasted publishes. |
 
-Both fields mirror `delay`: they accept a Jinja-renderable string so
-the same template-driven knobs (schedule-based overrides etc.) can apply
-later if needed. Validation: rendered value must be a non-negative int;
-`ensure_interval` must be `> 0`.
+Both fields accept a Jinja-renderable string for template-driven knobs
+(schedule-based overrides etc.) if needed later. Validation: rendered
+value must be a non-negative int; `ensure_interval` must be `> 0`.
+
+Note: these are in seconds, unlike `delay` which is in minutes (legacy
+unit, multiplied by 60 in `get_delay`). The retry loop operates on the
+scale of single device timeouts (z2m default 10s), so a separate unit
+matches reality. Internal helpers `get_ensure_window()` and
+`get_ensure_interval()` render without unit conversion.
 
 Existing config entries without these fields take the defaults. Schema
 migration adds the keys with defaults during the next config_entry load
