@@ -27,6 +27,21 @@ class GroupConfig(BaseModel):
     sensors: list[str] = []
     sensor_templates: list[str] = []
     delay: int | str = 0
+    # Post-deadline ensure-off loop knobs (in SECONDS, unlike `delay`
+    # which is in minutes). See docs/superpowers/specs/
+    # 2026-05-16-ensure-off-loop-design.md.
+    ensure_window: int | str = 60
+    ensure_interval: int | str = 10
+
+    @model_validator(mode="after")
+    def _validate_ensure_settings(self) -> "GroupConfig":
+        # Only validate plain ints; templated strings are checked at
+        # render time inside ``get_ensure_window`` / ``get_ensure_interval``.
+        if isinstance(self.ensure_window, int) and self.ensure_window < 0:
+            raise ValueError("'ensure_window' must be >= 0")
+        if isinstance(self.ensure_interval, int) and self.ensure_interval <= 0:
+            raise ValueError("'ensure_interval' must be > 0")
+        return self
 
     @field_validator("targets")
     @classmethod
@@ -384,6 +399,9 @@ class SensorGroup:
         self._lock = asyncio.Lock()
         # Tracking previous states for transition detection
         self._last_any_target_on: bool | None = None
+        # Post-deadline retry loop handle. See _ensure_off_loop and the
+        # design spec (2026-05-16-ensure-off-loop-design.md).
+        self._ensure_task: asyncio.Task | None = None
         self._init_from_config()
 
     def _init_from_config(self):
@@ -443,6 +461,41 @@ class SensorGroup:
             return int(rendered) * 60
         except Exception as err:
             raise ValueError(f"Failed to render delay template: {self._config.delay}, result: {rendered}") from err
+
+    def _render_seconds_field(self, name: str, raw) -> int:
+        """Render a seconds-scale config field to int.
+
+        Plain ints are returned as-is to avoid hitting the Template engine
+        when no templating is actually needed (this also keeps unit tests
+        free of full ``hass.config`` mocks). Strings are rendered through
+        the standard Jinja path.
+        """
+        if isinstance(raw, int):
+            return raw
+        tpl = Template(str(raw), self.hass)
+        rendered = tpl.async_render()
+        try:
+            return int(rendered)
+        except Exception as err:
+            raise ValueError(
+                f"Failed to render {name} template: {raw}, result: {rendered}"
+            ) from err
+
+    async def get_ensure_window(self) -> int:
+        """Render ``ensure_window`` to seconds.
+
+        Unlike :meth:`get_delay`, this value is in seconds already - no
+        ``* 60`` conversion. The ensure loop operates on the device-timeout
+        scale (z2m default 10s), not on the minute scale.
+        """
+        return self._render_seconds_field("ensure_window", self._config.ensure_window)
+
+    async def get_ensure_interval(self) -> int:
+        """Render ``ensure_interval`` to seconds. See :meth:`get_ensure_window`."""
+        value = self._render_seconds_field("ensure_interval", self._config.ensure_interval)
+        if value <= 0:
+            raise ValueError(f"'ensure_interval' must be > 0, got {value}")
+        return value
 
     async def check_and_set_deadline(self):
         """Main method for checking and setting deadline"""
@@ -633,6 +686,10 @@ class SensorGroup:
             self._timer.cancel()
             self._timer = None
         self._timer_deadline = None  # Always clear deadline when cancelling
+        # Also cancel any active post-deadline retry loop; the new state
+        # (sensor on, target off, or new cycle) supersedes the previous
+        # turn-off attempt.
+        self._cancel_ensure_task()
         self._notify_deadline_change()
         return had_timer
 
@@ -685,6 +742,110 @@ class SensorGroup:
         if tasks:
             await asyncio.gather(*tasks)
         _LOGGER.info("All targets turned off after deadline.")
+
+        # Detached retry loop. See _ensure_off_loop for semantics.
+        self._cancel_ensure_task()
+        self._ensure_task = asyncio.create_task(self._ensure_off_loop())
+
+    def _cancel_ensure_task(self) -> None:
+        """Cancel an active ensure-off loop, if any. Idempotent."""
+        task = self._ensure_task
+        if task is None or task.done():
+            self._ensure_task = None
+            return
+        task.cancel()
+        self._ensure_task = None
+
+    async def _ensure_off_loop(self) -> None:
+        """Retry per-target ``turn_off`` until every target is off.
+
+        Runs after the initial dispatch in :meth:`_turn_off_targets`.
+        Stops as soon as one of these is true:
+
+        * Every target reports ``is_on() == False`` (success).
+        * ``all_sensors_off()`` returns ``False`` (presence reclaimed).
+        * ``ensure_window`` seconds have elapsed (window expired).
+        * The task is cancelled from outside (new deadline, deadline
+          cancelled, or group unload).
+
+        The retry loop NEVER re-dispatches to a group entity; it iterates
+        the individual targets that are still on and calls ``turn_off``
+        on each. This avoids spamming a whole group when only one member
+        failed to switch.
+        """
+        import time
+
+        try:
+            window = await self.get_ensure_window()
+            interval = await self.get_ensure_interval()
+        except ValueError as exc:
+            _LOGGER.warning(
+                "[%s] ensure: invalid config, skipping loop: %s",
+                self.group_id,
+                exc,
+            )
+            return
+
+        if window <= 0:
+            return
+
+        deadline = time.monotonic() + window
+        while time.monotonic() < deadline:
+            await asyncio.sleep(interval)
+
+            if not await self.all_sensors_off():
+                _LOGGER.info(
+                    "[%s] ensure: sensors back on, abort",
+                    self.group_id,
+                )
+                return
+
+            still_on = []
+            for target in self._targets:
+                try:
+                    if await target.is_on():
+                        still_on.append(target)
+                except Exception as exc:  # noqa: BLE001 - never die mid-loop
+                    _LOGGER.warning(
+                        "[%s] ensure: is_on check on %s failed: %s",
+                        self.group_id,
+                        getattr(target, "entity_id", "?"),
+                        exc,
+                    )
+
+            if not still_on:
+                _LOGGER.info(
+                    "[%s] ensure: all targets off",
+                    self.group_id,
+                )
+                return
+
+            _LOGGER.info(
+                "[%s] ensure: %d target(s) still on, retrying",
+                self.group_id,
+                len(still_on),
+            )
+            for target in still_on:
+                try:
+                    await target.turn_off()
+                except Exception as exc:  # noqa: BLE001
+                    _LOGGER.warning(
+                        "[%s] ensure: retry of %s failed: %s",
+                        self.group_id,
+                        getattr(target, "entity_id", "?"),
+                        exc,
+                    )
+
+        # Window expired with at least one target still on.
+        try:
+            remaining = sum(1 for t in self._targets if await t.is_on())
+        except Exception:
+            remaining = -1
+        _LOGGER.warning(
+            "[%s] ensure: window expired, %d target(s) still on",
+            self.group_id,
+            remaining,
+        )
 
     async def async_unload(self):
         """Cleans up group resources"""
