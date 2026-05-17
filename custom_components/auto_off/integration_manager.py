@@ -15,6 +15,7 @@ from .const import CONF_GROUPS, CONF_POLL_INTERVAL, DOMAIN
 from .group_entities import (
     TARGET_GROUP_ENTITY_CLASSES,
     AutoOffSensorsGroup,
+    expand_group_targets,
     split_targets_by_domain,
 )
 
@@ -188,8 +189,11 @@ class IntegrationManager:
             if sensors_entity.hass is not None:
                 sensors_entity.async_write_ha_state()
 
-        # Targets-groups per domain
-        desired = split_targets_by_domain(list(config.targets))
+        # Targets-groups per domain. Expand any group-like targets to
+        # their leaves first: auto_off must drive the actual end devices,
+        # not the AND-semantic UI groups they often pass through.
+        expanded_targets = expand_group_targets(self.hass, list(config.targets))
+        desired = split_targets_by_domain(expanded_targets)
         current_domains = {
             domain for (gname, domain) in self._targets_group_entities if gname == group_name
         }

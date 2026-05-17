@@ -12,6 +12,10 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.template import Template
 from pydantic import BaseModel, field_validator, model_validator
 
+# Local import to avoid a top-level cycle through __init__ → integration_manager.
+# group_entities only imports from .const, so this is safe.
+from .group_entities import expand_group_targets  # noqa: E402
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -448,7 +452,14 @@ class SensorGroup:
                 asyncio.create_task(sensor_obj.start_tracking())
             except Exception as e:
                 _LOGGER.error(f"Sensor template '{template_str}' is invalid and will be ignored: {e}")
-        for target_def in self._config.targets:
+        # Expand any group-like targets to their leaves before building
+        # Target objects. Auto_off must drive the actual end devices so
+        # the ensure-off retry loop can tell precisely which leaves did
+        # not switch off. The raw config (``self._config.targets``) is
+        # left untouched so ``dump_group`` reports the user's intent
+        # rather than the expanded form.
+        expanded_targets = expand_group_targets(self.hass, list(self._config.targets))
+        for target_def in expanded_targets:
             target = Target(self.hass, target_def, self._on_target_state_change)
             self._targets.append(target)
             asyncio.create_task(target.start_tracking())

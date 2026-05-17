@@ -225,6 +225,58 @@ TARGET_GROUP_ENTITY_CLASSES: dict[str, type] = {
 }
 
 
+def expand_group_targets(hass, entity_ids: list[str]) -> list[str]:
+    """Recursively expand any group-like targets to their leaves.
+
+    A target is treated as a group when its current state in
+    ``hass.states`` exposes an ``entity_id`` attribute that is a list.
+    The list is then walked recursively until every produced id either
+    has no ``entity_id`` attribute (a real leaf) or is absent from
+    ``hass.states`` (late-loaded entity - kept as a leaf so auto_off
+    still drives it directly when it appears).
+
+    Results are de-duplicated while preserving first-seen order. Cycles
+    are broken via a ``visited`` set, so ``light.a -> light.b ->
+    light.a`` terminates without recursion.
+
+    Why: HA group entities (helper ``group:``, ``light.*`` groups,
+    Magic Areas light groups, our own per-domain target groups) often
+    use AND semantics for UI / toggle behavior, but auto_off needs to
+    drive their members individually so that its ensure-off retry loop
+    can tell exactly which leaves failed to switch off.
+    """
+    seen: list[str] = []
+    seen_set: set[str] = set()
+    visited: set[str] = set()
+
+    def _walk(eid: str) -> None:
+        if eid in visited:
+            return
+        visited.add(eid)
+
+        state = hass.states.get(eid)
+        children: list[str] | None = None
+        if state is not None:
+            attr = getattr(state, "attributes", {}) or {}
+            raw = attr.get("entity_id")
+            if isinstance(raw, list) and raw:
+                children = [c for c in raw if isinstance(c, str)]
+
+        if not children:
+            # Leaf (or late-loaded entity treated as a leaf).
+            if eid not in seen_set:
+                seen.append(eid)
+                seen_set.add(eid)
+            return
+
+        for child in children:
+            _walk(child)
+
+    for entity_id in entity_ids:
+        _walk(entity_id)
+    return seen
+
+
 def split_targets_by_domain(targets: list[str]) -> dict[str, list[str]]:
     """Bucket targets by domain, skipping non-groupable domains.
 
