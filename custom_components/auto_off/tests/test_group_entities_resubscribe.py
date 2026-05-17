@@ -141,6 +141,9 @@ class TestTargetsGroupResubscribes:
         entity = LightTargets(group_name="g", entity_ids=["light.a"])
         hass = MagicMock()
         entity.hass = hass
+        # async_update_group_state on the real LightGroup reaches into
+        # hass.states; stub it so we test our wiring, not HA internals.
+        entity.async_update_group_state = MagicMock()
         entity.async_write_ha_state = MagicMock()
         # The HA LightGroup.async_added_to_hass touches many things; stub it.
         with patch(
@@ -154,6 +157,43 @@ class TestTargetsGroupResubscribes:
 
         first_unsub.assert_called_once()
         assert any(c["entity_ids"] == ["light.b"] for c in tracker)
+
+
+class TestUpdateMembersRefreshesState:
+    """``update_members`` must trigger an immediate recomputation of the
+    group state.
+
+    Without this, a group that switched from an all-unavailable member
+    set to a healthy one stays ``unavailable`` until the next
+    state-change event on one of the new members - which can be a long
+    wait for stable sensors.
+    """
+
+    async def test_update_members_calls_async_update_group_state(
+        self, monkeypatch
+    ):
+        _patch_tracker(monkeypatch)
+        entity = AutoOffSensorsGroup(
+            group_name="g",
+            entity_ids=["binary_sensor.a"],
+            sensor_templates=[],
+        )
+        hass = MagicMock()
+        entity.hass = hass
+        entity.async_update_group_state = MagicMock()
+        entity.async_write_ha_state = MagicMock()
+        with patch(
+            "homeassistant.components.group.binary_sensor.BinarySensorGroup.async_added_to_hass",
+            new=AsyncMock(),
+        ):
+            await entity.async_added_to_hass()
+
+        entity.update_members(
+            entity_ids=["binary_sensor.b"],
+            sensor_templates=[],
+        )
+
+        entity.async_update_group_state.assert_called_once()
 
 
 class TestRemoveCancelsSubscription:

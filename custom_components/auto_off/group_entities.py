@@ -138,6 +138,10 @@ class AutoOffSensorsGroup(BinarySensorGroup):
         ``async_added_to_hass`` and is never refreshed, so without this
         rewiring the entity would keep tracking only the original ids.
 
+        Also runs an immediate state recomputation so the group reflects
+        the new members without waiting for the next state-change event
+        on one of them.
+
         Caller must invoke ``async_write_ha_state`` afterwards.
         """
         self._entity_ids = list(entity_ids)
@@ -148,6 +152,9 @@ class AutoOffSensorsGroup(BinarySensorGroup):
             self._auto_off_member_unsub()
             self._auto_off_member_unsub = None
         self._auto_off_member_unsub = _install_member_listener(self)
+
+        if self.hass is not None:
+            self.async_update_group_state()
 
 
 def _make_targets_group_class(domain: str, base: type) -> type:
@@ -188,10 +195,12 @@ def _make_targets_group_class(domain: str, base: type) -> type:
         def update_members(self, entity_ids: list[str]) -> None:
             """Replace the tracked member list.
 
-            Rebuilds the state-change subscription so the entity actually
-            reacts to its post-update members. See
-            ``AutoOffSensorsGroup.update_members`` for the rationale.
-            Caller must invoke ``async_write_ha_state`` afterwards.
+            Rebuilds the state-change subscription and recomputes the
+            group state immediately so the entity reflects the new
+            members without waiting for the next state-change event on
+            one of them. See ``AutoOffSensorsGroup.update_members`` for
+            the rationale. Caller must invoke ``async_write_ha_state``
+            afterwards.
             """
             self._entity_ids = list(entity_ids)
             self._attr_extra_state_attributes = {"entity_id": list(entity_ids)}
@@ -200,6 +209,9 @@ def _make_targets_group_class(domain: str, base: type) -> type:
                 self._auto_off_member_unsub()
                 self._auto_off_member_unsub = None
             self._auto_off_member_unsub = _install_member_listener(self)
+
+            if self.hass is not None:
+                self.async_update_group_state()
 
     _AutoOffTargetsGroup.__name__ = f"AutoOffTargets{domain.title().replace('_', '')}Group"
     _AutoOffTargetsGroup.__qualname__ = _AutoOffTargetsGroup.__name__
