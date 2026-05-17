@@ -4,7 +4,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from homeassistant.core import HomeAssistant, State, valid_entity_id
+from homeassistant.core import CoreState, HomeAssistant, State, valid_entity_id
 from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_template,
@@ -13,6 +13,19 @@ from homeassistant.helpers.template import Template
 from pydantic import BaseModel, field_validator, model_validator
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _missing_entity_log_level(hass: HomeAssistant) -> int:
+    """Choose log level for "entity not in state machine" events.
+
+    INFO while HA is still starting (integrations register their entities
+    on different schedules; absence is expected during this window).
+    WARNING in every other phase, in particular ``running``, when a
+    missing entity points at a real configuration or registration bug.
+    """
+    if getattr(hass, "state", None) == CoreState.starting:
+        return logging.INFO
+    return logging.WARNING
 
 
 class GroupConfig(BaseModel):
@@ -243,7 +256,11 @@ class Sensor:
             _LOGGER.debug(f"Entity sensor '{entity_id}' state: {state.state} -> {result}")
             return result
 
-        _LOGGER.info(f"Sensor entity '{entity_id}' state not found")
+        _LOGGER.log(
+            _missing_entity_log_level(self.hass),
+            "Sensor entity '%s' state not found",
+            entity_id,
+        )
         return False
 
     def get_entity_id(self) -> str | None:
