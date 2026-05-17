@@ -29,11 +29,14 @@ CONF_POLL_INTERVAL = "poll_interval"
 # Service names and field names
 SERVICE_SET_GROUP = "set_group"
 SERVICE_DELETE_GROUP = "delete_group"
+SERVICE_DUMP_GROUP = "dump_group"
 CONF_GROUP_NAME = "group_name"
 CONF_TARGETS = "targets"
 CONF_SENSORS = "sensors"
 CONF_SENSOR_TEMPLATES = "sensor_templates"
 CONF_DELAY = "delay"
+CONF_ENSURE_WINDOW = "ensure_window"
+CONF_ENSURE_INTERVAL = "ensure_interval"
 
 # Platforms forwarded by async_setup_entry.
 # - sensor: deadline sensor (existing)
@@ -67,11 +70,14 @@ __all__ = [
     "CONF_POLL_INTERVAL",
     "SERVICE_SET_GROUP",
     "SERVICE_DELETE_GROUP",
+    "SERVICE_DUMP_GROUP",
     "CONF_GROUP_NAME",
     "CONF_TARGETS",
     "CONF_SENSORS",
     "CONF_SENSOR_TEMPLATES",
     "CONF_DELAY",
+    "CONF_ENSURE_WINDOW",
+    "CONF_ENSURE_INTERVAL",
     "PLATFORMS",
     "GROUPABLE_DOMAINS",
 ]

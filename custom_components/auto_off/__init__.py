@@ -3,8 +3,10 @@
 import logging
 
 import voluptuous as vol
+import yaml
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from pydantic import ValidationError
@@ -12,6 +14,8 @@ from pydantic import ValidationError
 from .auto_off import GroupConfig
 from .const import (
     CONF_DELAY,
+    CONF_ENSURE_INTERVAL,
+    CONF_ENSURE_WINDOW,
     CONF_GROUP_NAME,
     CONF_GROUPS,
     CONF_SENSOR_TEMPLATES,
@@ -20,6 +24,7 @@ from .const import (
     DOMAIN,
     PLATFORMS,
     SERVICE_DELETE_GROUP,
+    SERVICE_DUMP_GROUP,
     SERVICE_SET_GROUP,
     VERSION,
 )
@@ -34,10 +39,18 @@ SERVICE_SET_GROUP_SCHEMA = vol.Schema(
         vol.Optional(CONF_SENSORS, default=list): vol.All(cv.ensure_list, [cv.entity_id]),
         vol.Optional(CONF_SENSOR_TEMPLATES, default=list): vol.All(cv.ensure_list, [cv.string]),
         vol.Optional(CONF_DELAY, default=0): vol.Any(int, cv.string),
+        vol.Optional(CONF_ENSURE_WINDOW, default=60): vol.Any(int, cv.string),
+        vol.Optional(CONF_ENSURE_INTERVAL, default=10): vol.Any(int, cv.string),
     }
 )
 
 SERVICE_DELETE_GROUP_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_GROUP_NAME): cv.string,
+    }
+)
+
+SERVICE_DUMP_GROUP_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_GROUP_NAME): cv.string,
     }
@@ -74,6 +87,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         hass.services.async_remove(DOMAIN, SERVICE_SET_GROUP)
         hass.services.async_remove(DOMAIN, SERVICE_DELETE_GROUP)
+        hass.services.async_remove(DOMAIN, SERVICE_DUMP_GROUP)
 
         manager = hass.data.pop(DOMAIN, None)
         if manager is not None:
@@ -116,6 +130,8 @@ async def _async_register_services(hass: HomeAssistant, entry: ConfigEntry) -> N
             CONF_SENSORS: list(call.data.get(CONF_SENSORS, [])),
             CONF_SENSOR_TEMPLATES: list(call.data.get(CONF_SENSOR_TEMPLATES, [])),
             CONF_DELAY: call.data.get(CONF_DELAY, 0),
+            CONF_ENSURE_WINDOW: call.data.get(CONF_ENSURE_WINDOW, 60),
+            CONF_ENSURE_INTERVAL: call.data.get(CONF_ENSURE_INTERVAL, 10),
         }
 
         try:
@@ -162,6 +178,47 @@ async def _async_register_services(hass: HomeAssistant, entry: ConfigEntry) -> N
         await manager.delete_group(group_name)
         _LOGGER.info("Group '%s' deleted", group_name)
 
+    async def handle_dump_group(call: ServiceCall) -> dict[str, str]:
+        """Return a YAML block that recreates the named group via set_group.
+
+        The block targets ``auto_off.set_group`` and includes every
+        configurable field of :class:`GroupConfig` (even when equal to the
+        default) so the operator can paste it into Developer Tools →
+        Services unmodified, or edit any single field without having to
+        remember the rest.
+        """
+        group_name = call.data[CONF_GROUP_NAME]
+        groups = entry.data.get(CONF_GROUPS, {})
+
+        if group_name not in groups:
+            raise ServiceValidationError(
+                f"Group '{group_name}' does not exist",
+                translation_domain=DOMAIN,
+                translation_key="dump_group_not_found",
+                translation_placeholders={"group_name": group_name},
+            )
+
+        stored = dict(groups[group_name])
+        # Normalize to the same field set ``set_group`` accepts. Defaults
+        # match SERVICE_SET_GROUP_SCHEMA so a round trip is exact.
+        data = {
+            CONF_GROUP_NAME: group_name,
+            CONF_TARGETS: list(stored.get(CONF_TARGETS, [])),
+            CONF_SENSORS: list(stored.get(CONF_SENSORS, [])),
+            CONF_SENSOR_TEMPLATES: list(stored.get(CONF_SENSOR_TEMPLATES, [])),
+            CONF_DELAY: stored.get(CONF_DELAY, 0),
+            CONF_ENSURE_WINDOW: stored.get(CONF_ENSURE_WINDOW, 60),
+            CONF_ENSURE_INTERVAL: stored.get(CONF_ENSURE_INTERVAL, 10),
+        }
+        block = {"service": f"{DOMAIN}.{SERVICE_SET_GROUP}", "data": data}
+        text = yaml.safe_dump(
+            block,
+            default_flow_style=False,
+            sort_keys=False,
+            allow_unicode=True,
+        )
+        return {"yaml": text}
+
     # Register services
     hass.services.async_register(DOMAIN, SERVICE_SET_GROUP, handle_set_group, schema=SERVICE_SET_GROUP_SCHEMA)
     hass.services.async_register(
@@ -169,6 +226,13 @@ async def _async_register_services(hass: HomeAssistant, entry: ConfigEntry) -> N
         SERVICE_DELETE_GROUP,
         handle_delete_group,
         schema=SERVICE_DELETE_GROUP_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_DUMP_GROUP,
+        handle_dump_group,
+        schema=SERVICE_DUMP_GROUP_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
     )
 
 
