@@ -66,6 +66,13 @@ class IntegrationManager:
         self._lock = asyncio.Lock()
         self._remove_listener = None
         self._groups_data: dict[str, dict] = dict(groups_data)
+        # Per-group memo of the last expanded-targets tuple. Used by the
+        # periodic worker to detect when an originally-group target has
+        # finally registered its members (HA startup race with Magic
+        # Areas etc.) or when an area composition changes at runtime,
+        # so we can re-run _sync_group_entities and propagate the new
+        # leaves into the per-domain target group entities.
+        self._last_expanded_targets: dict[str, tuple[str, ...]] = {}
 
     def _on_deadline_change(self, group_name: str, deadline_iso: str | None) -> None:
         deadline_entity = self._deadline_entities.get(group_name)
@@ -280,8 +287,11 @@ class IntegrationManager:
         _LOGGER.info("IntegrationManager initialized with poll_interval %ds", poll_interval)
 
     async def _periodic_worker(self, now):
-        """Periodic worker: advance group state machines and refresh
-        deadline sensors with the latest human-readable deadline."""
+        """Periodic worker: advance group state machines, refresh
+        deadline sensors, and re-expand group-like targets whose
+        membership only became visible after the original
+        _sync_group_entities ran (HA startup race / area composition
+        change)."""
         if self._lock.locked():
             _LOGGER.warning("IntegrationManager worker already running, skipping this tick")
             return
@@ -289,6 +299,89 @@ class IntegrationManager:
             await self.auto_off.periodic_worker()
             for group_name in self._deadline_entities:
                 self._update_deadline_sensor_for_group(group_name)
+            await self._reexpand_group_targets()
+
+    async def _reexpand_group_targets(self) -> None:
+        """Re-run target expansion for every group; if a group's leaf
+        set changed since the last tick, re-sync downstream state so
+        both our per-domain target group entities AND the in-process
+        SensorGroup.self._targets list catch up. No-op when expansion
+        is stable across ticks."""
+        for group_name, config_dict in list(self._groups_data.items()):
+            raw_targets = list(config_dict.get("targets", []))
+            expanded = tuple(expand_group_targets(self.hass, raw_targets))
+            previous = self._last_expanded_targets.get(group_name)
+            if previous == expanded:
+                continue
+            self._last_expanded_targets[group_name] = expanded
+            first_observation = previous is None
+            if first_observation:
+                _LOGGER.debug(
+                    "Initial expansion baseline for group '%s': %s",
+                    group_name,
+                    list(expanded),
+                )
+            else:
+                _LOGGER.info(
+                    "Target expansion changed for group '%s': %s -> %s",
+                    group_name,
+                    list(previous),
+                    list(expanded),
+                )
+
+            # 1) Refresh per-domain target group entities so the UI
+            #    reflects the new leaves.
+            try:
+                await self._sync_group_entities(group_name, config_dict, is_new=False)
+            except Exception as exc:  # noqa: BLE001
+                _LOGGER.warning(
+                    "Re-sync after target expansion change failed for '%s': %s",
+                    group_name,
+                    exc,
+                )
+
+            # 2) Rebuild SensorGroup.self._targets so the ensure-loop
+            #    iterates real leaves. We skip the no-op first-observation
+            #    case where the in-memory SensorGroup was already built
+            #    from the same raw config and matches our baseline.
+            if first_observation:
+                continue
+            try:
+                await self._rebuild_sensor_group_for_targets_change(group_name)
+            except Exception as exc:  # noqa: BLE001
+                _LOGGER.warning(
+                    "SensorGroup rebuild after target expansion change failed for '%s': %s",
+                    group_name,
+                    exc,
+                )
+
+    async def _rebuild_sensor_group_for_targets_change(self, group_name: str) -> None:
+        """Rebuild a single SensorGroup so its self._targets reflects the
+        currently-observable expansion. Re-running the full
+        ``async_init_groups`` would also work but rebuilds every group;
+        we only need to touch the one whose composition changed."""
+        from .auto_off import SensorGroup
+
+        existing = self.auto_off._groups.get(group_name)
+        if existing is None:
+            return
+        try:
+            await existing.async_unload()
+        except Exception as exc:  # noqa: BLE001
+            _LOGGER.warning(
+                "Unload before targets-expansion rebuild failed for '%s': %s",
+                group_name,
+                exc,
+            )
+
+        new_group = SensorGroup(
+            self.hass,
+            group_name,
+            self.auto_off.config[group_name],
+            on_deadline_change=self.auto_off._on_deadline_change,
+            manager=self,
+        )
+        self.auto_off._groups[group_name] = new_group
 
     def _update_deadline_sensor_for_group(self, group_name: str) -> None:
         """Update deadline sensor for a specific group."""
