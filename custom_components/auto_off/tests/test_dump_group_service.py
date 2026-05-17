@@ -115,7 +115,12 @@ class TestDumpGroupBehavior:
 
     async def test_yaml_for_minimal_group_round_trips(self, hass_with_service):
         """The emitted YAML must parse back to the same field set we read,
-        and the parsed payload must satisfy ``set_group``'s schema."""
+        and the parsed payload must satisfy ``set_group``'s schema.
+
+        Uses the modern ``action:`` key (Home Assistant 2024.8+ renamed
+        ``service:`` to ``action:`` in scripts/automations YAML; the old
+        key still works but the UI now writes ``action:``).
+        """
         from custom_components.auto_off import SERVICE_SET_GROUP_SCHEMA
 
         response = await self._call(hass_with_service, "kitchen_minimal")
@@ -123,8 +128,9 @@ class TestDumpGroupBehavior:
         assert "yaml" in response, response
         parsed = yaml.safe_load(response["yaml"])
 
-        # Block targets the set_group service.
-        assert parsed["service"] == "auto_off.set_group"
+        # Block targets the set_group service via the modern action: key.
+        assert parsed["action"] == "auto_off.set_group"
+        assert "service" not in parsed
 
         # Round-trips through the set_group schema with no edits.
         validated = SERVICE_SET_GROUP_SCHEMA(parsed["data"])
@@ -180,7 +186,7 @@ class TestDumpGroupBehavior:
         # We don't pin the exact bytes - format details may change - but
         # the output must NOT be a single-line flow mapping.
         assert "\n" in text
-        assert "service: auto_off.set_group" in text
+        assert "action: auto_off.set_group" in text
         assert "data:" in text
         # Lists rendered as block sequences ("- entity_id").
         assert "- light.kitchen" in text

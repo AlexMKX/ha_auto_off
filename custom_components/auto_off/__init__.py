@@ -182,10 +182,15 @@ async def _async_register_services(hass: HomeAssistant, entry: ConfigEntry) -> N
         """Return a YAML block that recreates the named group via set_group.
 
         The block targets ``auto_off.set_group`` and includes every
-        configurable field of :class:`GroupConfig` (even when equal to the
-        default) so the operator can paste it into Developer Tools →
-        Services unmodified, or edit any single field without having to
+        configurable field of :class:`GroupConfig` (even when equal to
+        the default) so the operator can paste it into Developer Tools →
+        Actions unmodified, or edit any single field without having to
         remember the rest.
+
+        Uses the modern ``action:`` key. Home Assistant 2024.8 renamed
+        ``service:`` to ``action:`` in scripts/automations YAML; the UI
+        now writes ``action:`` everywhere, and dumps that match that
+        convention paste cleanly without manual rewriting.
         """
         group_name = call.data[CONF_GROUP_NAME]
         groups = entry.data.get(CONF_GROUPS, {})
@@ -210,7 +215,7 @@ async def _async_register_services(hass: HomeAssistant, entry: ConfigEntry) -> N
             CONF_ENSURE_WINDOW: stored.get(CONF_ENSURE_WINDOW, 60),
             CONF_ENSURE_INTERVAL: stored.get(CONF_ENSURE_INTERVAL, 10),
         }
-        block = {"service": f"{DOMAIN}.{SERVICE_SET_GROUP}", "data": data}
+        block = {"action": f"{DOMAIN}.{SERVICE_SET_GROUP}", "data": data}
         text = yaml.safe_dump(
             block,
             default_flow_style=False,
