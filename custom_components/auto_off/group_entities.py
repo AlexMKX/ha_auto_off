@@ -8,6 +8,7 @@ SensorGroup continues to subscribe to individual member entities.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
@@ -19,11 +20,42 @@ from homeassistant.components.group.lock import LockGroup
 from homeassistant.components.group.media_player import MediaPlayerGroup
 from homeassistant.components.group.switch import SwitchGroup
 from homeassistant.components.group.valve import ValveGroup
+from homeassistant.core import Event, EventStateChangedData, callback
 from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.event import async_track_state_change_event
 
 from .const import DOMAIN, VERSION
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _install_member_listener(entity) -> Callable[[], None] | None:
+    """Install our own state-change listener for ``entity._entity_ids``.
+
+    The parent ``GroupEntity.async_added_to_hass`` already installed a
+    listener, but it captured the entity-id list as it was at that
+    moment. Subsequent ``update_members`` calls swap ``_entity_ids`` on
+    the instance without touching the subscription, so changes to the
+    new members would be missed.
+
+    We register an additional listener mirroring the parent callback
+    (recompute group state, refresh UI). It is owned by us so we can
+    cancel and reinstall on every ``update_members`` call. Returns the
+    unsubscribe callable, or ``None`` if the entity is not attached to
+    a hass instance yet (no-op until ``async_added_to_hass``).
+    """
+    if entity.hass is None:
+        return None
+
+    @callback
+    def _on_member_state_change(event: Event[EventStateChangedData]) -> None:
+        entity.async_update_group_state()
+        if entity.hass is not None:
+            entity.async_write_ha_state()
+
+    return async_track_state_change_event(
+        entity.hass, list(entity._entity_ids), _on_member_state_change
+    )
 
 # Map HA domain -> HA stdlib *Group class.  Keep in sync with GROUPABLE_DOMAINS.
 _TARGET_GROUP_CLASSES: dict[str, type] = {
@@ -77,6 +109,7 @@ class AutoOffSensorsGroup(BinarySensorGroup):
         self._group_name = group_name
         self._sensor_templates = list(sensor_templates)
         self._attr_device_info = _device_info(group_name)
+        self._auto_off_member_unsub: Callable[[], None] | None = None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -84,16 +117,37 @@ class AutoOffSensorsGroup(BinarySensorGroup):
         base["sensor_templates"] = list(self._sensor_templates)
         return base
 
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._auto_off_member_unsub = _install_member_listener(self)
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._auto_off_member_unsub is not None:
+            self._auto_off_member_unsub()
+            self._auto_off_member_unsub = None
+        await super().async_will_remove_from_hass()
+
     def update_members(
         self, entity_ids: list[str], sensor_templates: list[str]
     ) -> None:
         """Update members and templates after a set_group call.
 
-        Caller must ensure async_write_ha_state is invoked afterwards.
+        Rebuilds the state-change subscription for the new member list
+        so the group entity actually reacts to its post-update members.
+        The standard ``GroupEntity`` listener subscribed once during
+        ``async_added_to_hass`` and is never refreshed, so without this
+        rewiring the entity would keep tracking only the original ids.
+
+        Caller must invoke ``async_write_ha_state`` afterwards.
         """
         self._entity_ids = list(entity_ids)
         self._attr_extra_state_attributes = {"entity_id": list(entity_ids)}
         self._sensor_templates = list(sensor_templates)
+
+        if self._auto_off_member_unsub is not None:
+            self._auto_off_member_unsub()
+            self._auto_off_member_unsub = None
+        self._auto_off_member_unsub = _install_member_listener(self)
 
 
 def _make_targets_group_class(domain: str, base: type) -> type:
@@ -119,14 +173,33 @@ def _make_targets_group_class(domain: str, base: type) -> type:
             )
             self._group_name = group_name
             self._attr_device_info = _device_info(group_name)
+            self._auto_off_member_unsub: Callable[[], None] | None = None
+
+        async def async_added_to_hass(self) -> None:
+            await super().async_added_to_hass()
+            self._auto_off_member_unsub = _install_member_listener(self)
+
+        async def async_will_remove_from_hass(self) -> None:
+            if self._auto_off_member_unsub is not None:
+                self._auto_off_member_unsub()
+                self._auto_off_member_unsub = None
+            await super().async_will_remove_from_hass()
 
         def update_members(self, entity_ids: list[str]) -> None:
             """Replace the tracked member list.
 
-            Caller must ensure async_write_ha_state is invoked afterwards.
+            Rebuilds the state-change subscription so the entity actually
+            reacts to its post-update members. See
+            ``AutoOffSensorsGroup.update_members`` for the rationale.
+            Caller must invoke ``async_write_ha_state`` afterwards.
             """
             self._entity_ids = list(entity_ids)
             self._attr_extra_state_attributes = {"entity_id": list(entity_ids)}
+
+            if self._auto_off_member_unsub is not None:
+                self._auto_off_member_unsub()
+                self._auto_off_member_unsub = None
+            self._auto_off_member_unsub = _install_member_listener(self)
 
     _AutoOffTargetsGroup.__name__ = f"AutoOffTargets{domain.title().replace('_', '')}Group"
     _AutoOffTargetsGroup.__qualname__ = _AutoOffTargetsGroup.__name__
