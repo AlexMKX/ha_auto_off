@@ -56,11 +56,11 @@ delete_group:
 dump_group:
   name: Dump Group
   description: >
-    Return a YAML block under `yaml` that recreates the named group via
-    auto_off.set_group. The block uses the modern `action:` key
-    (HA 2024.8+) and pastes directly into Developer Tools → Actions or
-    into an automation step. Read-only; the caller must request
-    response data ("Show response").
+    Return an `action` + `data` block that recreates the named group via
+    auto_off.set_group. Uses the modern `action:` key (HA 2024.8+) and
+    can be pasted directly into Developer Tools → Actions or into an
+    automation step. Read-only; the caller must request response data
+    ("Show response").
   fields:
     group_name:
       name: Group Name

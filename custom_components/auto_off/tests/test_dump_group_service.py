@@ -10,11 +10,9 @@ inferring which fields the group does or does not have.
 
 from __future__ import annotations
 
-import textwrap
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-import yaml
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.exceptions import ServiceValidationError
 
@@ -113,9 +111,15 @@ class TestDumpGroupBehavior:
         with pytest.raises(ServiceValidationError):
             await self._call(hass_with_service, "no_such_group")
 
-    async def test_yaml_for_minimal_group_round_trips(self, hass_with_service):
-        """The emitted YAML must parse back to the same field set we read,
-        and the parsed payload must satisfy ``set_group``'s schema.
+    async def test_response_is_native_action_dict(self, hass_with_service):
+        """The response must be a native dict with ``action`` and ``data``
+        keys at the top level, not a string-wrapped YAML block.
+
+        HA serializes ServiceResponse dicts directly to YAML in the UI;
+        returning a native dict avoids the ``yaml: |`` literal-block
+        wrapper that appears when the value is a multi-line string. The
+        operator can copy the response straight into Developer Tools →
+        Actions without unwrapping anything.
 
         Uses the modern ``action:`` key (Home Assistant 2024.8+ renamed
         ``service:`` to ``action:`` in scripts/automations YAML; the old
@@ -125,30 +129,28 @@ class TestDumpGroupBehavior:
 
         response = await self._call(hass_with_service, "kitchen_minimal")
 
-        assert "yaml" in response, response
-        parsed = yaml.safe_load(response["yaml"])
+        # Top-level shape: action + data, nothing else.
+        assert response["action"] == "auto_off.set_group"
+        assert isinstance(response["data"], dict)
+        assert "yaml" not in response
+        assert "service" not in response
 
-        # Block targets the set_group service via the modern action: key.
-        assert parsed["action"] == "auto_off.set_group"
-        assert "service" not in parsed
-
-        # Round-trips through the set_group schema with no edits.
-        validated = SERVICE_SET_GROUP_SCHEMA(parsed["data"])
+        # data Round-trips through the set_group schema with no edits.
+        validated = SERVICE_SET_GROUP_SCHEMA(response["data"])
         assert validated["group_name"] == "kitchen_minimal"
         assert validated["targets"] == ["light.kitchen"]
         assert validated["sensors"] == ["binary_sensor.kitchen_motion"]
         assert validated["sensor_templates"] == []
         assert validated["delay"] == 5
 
-    async def test_yaml_includes_every_field_even_when_default(
+    async def test_data_includes_every_field_even_when_default(
         self, hass_with_service
     ):
         """Even fields equal to their defaults are emitted, so the user can
         edit them without first remembering the defaults."""
         response = await self._call(hass_with_service, "kitchen_minimal")
-        parsed = yaml.safe_load(response["yaml"])
+        data = response["data"]
 
-        data = parsed["data"]
         # Required field
         assert "group_name" in data
         # All configurable GroupConfig fields, defaulted or not.
@@ -159,15 +161,14 @@ class TestDumpGroupBehavior:
         assert "ensure_window" in data
         assert "ensure_interval" in data
 
-    async def test_yaml_preserves_non_default_ensure_settings(
+    async def test_data_preserves_non_default_ensure_settings(
         self, hass_with_service
     ):
         """When the stored group overrides ensure_window / ensure_interval,
         the dump must echo those values rather than the GroupConfig defaults."""
         response = await self._call(hass_with_service, "office_full")
-        parsed = yaml.safe_load(response["yaml"])
+        data = response["data"]
 
-        data = parsed["data"]
         assert data["group_name"] == "office_full"
         assert data["delay"] == 15
         assert data["ensure_window"] == 90
@@ -175,18 +176,3 @@ class TestDumpGroupBehavior:
         assert data["sensor_templates"] == [
             "{{ is_state('schedule.work', 'on') }}"
         ]
-
-    async def test_yaml_is_human_readable_block_format(self, hass_with_service):
-        """The YAML must use block format (one entry per line, indented),
-        not flow/JSON-style, so it pastes cleanly into the UI."""
-        response = await self._call(hass_with_service, "kitchen_minimal")
-        text = response["yaml"]
-
-        # Reasonable indentation and at least one list-item line.
-        # We don't pin the exact bytes - format details may change - but
-        # the output must NOT be a single-line flow mapping.
-        assert "\n" in text
-        assert "action: auto_off.set_group" in text
-        assert "data:" in text
-        # Lists rendered as block sequences ("- entity_id").
-        assert "- light.kitchen" in text

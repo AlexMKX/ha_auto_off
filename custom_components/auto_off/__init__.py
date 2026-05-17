@@ -1,9 +1,9 @@
 """Auto Off integration for Home Assistant."""
 
 import logging
+from typing import Any
 
 import voluptuous as vol
-import yaml
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
@@ -178,19 +178,27 @@ async def _async_register_services(hass: HomeAssistant, entry: ConfigEntry) -> N
         await manager.delete_group(group_name)
         _LOGGER.info("Group '%s' deleted", group_name)
 
-    async def handle_dump_group(call: ServiceCall) -> dict[str, str]:
-        """Return a YAML block that recreates the named group via set_group.
+    async def handle_dump_group(call: ServiceCall) -> dict[str, Any]:
+        """Return a native action+data dict that recreates the named group.
 
-        The block targets ``auto_off.set_group`` and includes every
-        configurable field of :class:`GroupConfig` (even when equal to
-        the default) so the operator can paste it into Developer Tools →
-        Actions unmodified, or edit any single field without having to
-        remember the rest.
+        The dict is shaped like the modern HA script step:
 
-        Uses the modern ``action:`` key. Home Assistant 2024.8 renamed
-        ``service:`` to ``action:`` in scripts/automations YAML; the UI
-        now writes ``action:`` everywhere, and dumps that match that
-        convention paste cleanly without manual rewriting.
+            action: auto_off.set_group
+            data:
+              group_name: ...
+              targets: [...]
+              ...
+
+        Home Assistant serializes ServiceResponse dicts directly to YAML
+        in the UI, so returning a native dict avoids the ``yaml: |``
+        literal-block wrapper that appears when the value is a multi-
+        line string. The operator can copy the response straight into
+        Developer Tools → Actions or into an automation step without
+        unwrapping or reformatting anything.
+
+        Includes every configurable :class:`GroupConfig` field (even when
+        equal to its default) so a round trip is exact and the operator
+        can edit any single field without having to remember the rest.
         """
         group_name = call.data[CONF_GROUP_NAME]
         groups = entry.data.get(CONF_GROUPS, {})
@@ -215,14 +223,7 @@ async def _async_register_services(hass: HomeAssistant, entry: ConfigEntry) -> N
             CONF_ENSURE_WINDOW: stored.get(CONF_ENSURE_WINDOW, 60),
             CONF_ENSURE_INTERVAL: stored.get(CONF_ENSURE_INTERVAL, 10),
         }
-        block = {"action": f"{DOMAIN}.{SERVICE_SET_GROUP}", "data": data}
-        text = yaml.safe_dump(
-            block,
-            default_flow_style=False,
-            sort_keys=False,
-            allow_unicode=True,
-        )
-        return {"yaml": text}
+        return {"action": f"{DOMAIN}.{SERVICE_SET_GROUP}", "data": data}
 
     # Register services
     hass.services.async_register(DOMAIN, SERVICE_SET_GROUP, handle_set_group, schema=SERVICE_SET_GROUP_SCHEMA)
