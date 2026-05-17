@@ -79,7 +79,7 @@ Starting with release `2604231655`, the integration is split. This is a
 
    ```yaml
    # before (unified 2512.x)
-   service: auto_off.set_group
+   action: auto_off.set_group
    data:
      group_name: kitchen
      config: |
@@ -90,7 +90,7 @@ Starting with release `2604231655`, the integration is split. This is a
        delay: 5
 
    # after
-   service: auto_off.set_group
+   action: auto_off.set_group
    data:
      group_name: kitchen
      targets:
@@ -109,3 +109,15 @@ Starting with release `2604231655`, the integration is split. This is a
    supported. If you previously used template targets, replace them with
    the resolved entity ids and call `auto_off.set_group` with the updated
    payload.
+
+## Idempotent configuration via actions
+
+Every operation on auto_off is exposed as an action with a stable YAML
+payload (`auto_off.set_group`, `auto_off.delete_group`,
+`auto_off.dump_group`). There is no required UI clicking — groups can
+be created, edited, dumped, backed up, migrated, or driven by LLM
+agents and CI pipelines.
+
+See
+[custom_components/auto_off/README.md](custom_components/auto_off/README.md#actions)
+for the full action reference and the dump → edit → set workflow.
