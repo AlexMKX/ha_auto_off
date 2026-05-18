@@ -38,14 +38,15 @@ Fields:
 - `delay` (int or Jinja string, optional, default 0): delay in **minutes**.
   Integer is plain minutes; a string is rendered as a template whose
   result is cast to int minutes.
-- `ensure_window` (int, optional, default 60): post-deadline retry
-  window in **seconds**. After the initial `turn_off` dispatch at
-  deadline expiry, auto_off retries any target that is still on while
-  the sensors stay off. Set to `0` to disable retries.
-- `ensure_interval` (int, optional, default 10): pause in **seconds**
-  between retry passes inside the ensure window. Must be `> 0`.
 
 At least one of `sensors` or `sensor_templates` must be non-empty.
+
+The ensure-off retry behavior (described under "Key principles") is
+governed by two module-level constants in
+`custom_components/auto_off/auto_off.py`
+(`ENSURE_WINDOW_SEC = 60`, `ENSURE_INTERVAL_SEC = 10`). They are not
+exposed as per-group settings; production data showed a single value
+works for every group.
 
 Example:
 
@@ -58,8 +59,6 @@ data:
   sensors:
     - binary_sensor.motion_kitchen
   delay: 5
-  ensure_window: 60
-  ensure_interval: 10
 ```
 
 ### `auto_off.delete_group`
@@ -106,8 +105,6 @@ data:
     - binary_sensor.motion_kitchen
   sensor_templates: []
   delay: '5'
-  ensure_window: 60
-  ensure_interval: 10
 ```
 
 The dump always includes **every** configurable field, even when its
@@ -161,13 +158,15 @@ target. The attribute is cleared when the deadline is cancelled.
   would be later.
 - **Ensure-off retry**: at deadline expiry auto_off does an initial
   `turn_off` dispatch and then runs a bounded retry loop for
-  `ensure_window` seconds (default 60s), re-issuing `turn_off` every
-  `ensure_interval` seconds (default 10s) on any target that is still
+  `ENSURE_WINDOW_SEC` seconds (60s), re-issuing `turn_off` every
+  `ENSURE_INTERVAL_SEC` seconds (10s) on any target that is still
   on while sensors stay off. The loop aborts the moment any sensor
   reports on again. This makes the integration resilient to transient
   MQTT/Zigbee delivery failures and to brief races with other
   automations (e.g. Magic Areas Light Control), without overriding
-  legitimate user / occupancy actions.
+  legitimate user / occupancy actions. The values are module-level
+  constants; promote them to per-group settings only when a real use
+  case requires it.
 - **Recovery from attributes**: if the timer is lost (e.g. HA restart),
   the integration periodically checks `auto_off_deadline` and retries
   turning off overdue entities.

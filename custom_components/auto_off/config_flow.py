@@ -16,7 +16,7 @@ DEFAULT_POLL_INTERVAL = 15
 class AutoOffConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Auto Off."""
 
-    VERSION = 3
+    VERSION = 4
 
     async def async_step_user(self, user_input=None):
         """Handle the initial step - just create the integration."""

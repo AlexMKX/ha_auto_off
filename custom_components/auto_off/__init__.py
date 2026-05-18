@@ -14,8 +14,6 @@ from pydantic import ValidationError
 from .auto_off import GroupConfig
 from .const import (
     CONF_DELAY,
-    CONF_ENSURE_INTERVAL,
-    CONF_ENSURE_WINDOW,
     CONF_GROUP_NAME,
     CONF_GROUPS,
     CONF_SENSOR_TEMPLATES,
@@ -39,8 +37,6 @@ SERVICE_SET_GROUP_SCHEMA = vol.Schema(
         vol.Optional(CONF_SENSORS, default=list): vol.All(cv.ensure_list, [cv.entity_id]),
         vol.Optional(CONF_SENSOR_TEMPLATES, default=list): vol.All(cv.ensure_list, [cv.string]),
         vol.Optional(CONF_DELAY, default=0): vol.Any(int, cv.string),
-        vol.Optional(CONF_ENSURE_WINDOW, default=60): vol.Any(int, cv.string),
-        vol.Optional(CONF_ENSURE_INTERVAL, default=10): vol.Any(int, cv.string),
     }
 )
 
@@ -101,8 +97,28 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     v1 → v2: structured group fields (automatic, data shape unchanged).
     v2 → v3: no data change needed; only version bump.
+    v3 → v4: strip ``ensure_window`` / ``ensure_interval`` from stored
+    groups. They were briefly exposed as per-group settings and rolled
+    back to module-level constants (``ENSURE_WINDOW_SEC`` /
+    ``ENSURE_INTERVAL_SEC``). GroupConfig now forbids extra fields,
+    so old entries must shed them before they reach validation.
     """
-    if entry.version >= 3:
+    if entry.version >= 4:
+        return True
+
+    if entry.version == 3:
+        _LOGGER.info(
+            "Migrating auto_off config entry from version 3 to 4: "
+            "removing per-group ensure_window / ensure_interval fields"
+        )
+        groups = dict(entry.data.get(CONF_GROUPS, {}))
+        cleaned: dict[str, dict] = {}
+        for name, cfg in groups.items():
+            new_cfg = {k: v for k, v in cfg.items() if k not in ("ensure_window", "ensure_interval")}
+            cleaned[name] = new_cfg
+        new_data = dict(entry.data)
+        new_data[CONF_GROUPS] = cleaned
+        hass.config_entries.async_update_entry(entry, data=new_data, version=4)
         return True
 
     if entry.version == 2:
@@ -130,8 +146,6 @@ async def _async_register_services(hass: HomeAssistant, entry: ConfigEntry) -> N
             CONF_SENSORS: list(call.data.get(CONF_SENSORS, [])),
             CONF_SENSOR_TEMPLATES: list(call.data.get(CONF_SENSOR_TEMPLATES, [])),
             CONF_DELAY: call.data.get(CONF_DELAY, 0),
-            CONF_ENSURE_WINDOW: call.data.get(CONF_ENSURE_WINDOW, 60),
-            CONF_ENSURE_INTERVAL: call.data.get(CONF_ENSURE_INTERVAL, 10),
         }
 
         try:
@@ -220,8 +234,6 @@ async def _async_register_services(hass: HomeAssistant, entry: ConfigEntry) -> N
             CONF_SENSORS: list(stored.get(CONF_SENSORS, [])),
             CONF_SENSOR_TEMPLATES: list(stored.get(CONF_SENSOR_TEMPLATES, [])),
             CONF_DELAY: stored.get(CONF_DELAY, 0),
-            CONF_ENSURE_WINDOW: stored.get(CONF_ENSURE_WINDOW, 60),
-            CONF_ENSURE_INTERVAL: stored.get(CONF_ENSURE_INTERVAL, 10),
         }
         return {"action": f"{DOMAIN}.{SERVICE_SET_GROUP}", "data": data}
 

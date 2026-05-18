@@ -35,11 +35,6 @@ class TestSetGroupStructured:
             "sensors": ["binary_sensor.motion_kitchen"],
             "sensor_templates": [],
             "delay": 5,
-            # ensure_window / ensure_interval take their schema defaults
-            # when the caller does not supply them - they always propagate
-            # into the stored config so dump_group can round-trip them.
-            "ensure_window": 60,
-            "ensure_interval": 10,
         }
         assert args[2] is True  # is_new_group
 

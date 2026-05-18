@@ -35,8 +35,6 @@ CONF_TARGETS = "targets"
 CONF_SENSORS = "sensors"
 CONF_SENSOR_TEMPLATES = "sensor_templates"
 CONF_DELAY = "delay"
-CONF_ENSURE_WINDOW = "ensure_window"
-CONF_ENSURE_INTERVAL = "ensure_interval"
 
 # Platforms forwarded by async_setup_entry.
 # - sensor: deadline sensor (existing)
@@ -76,8 +74,6 @@ __all__ = [
     "CONF_SENSORS",
     "CONF_SENSOR_TEMPLATES",
     "CONF_DELAY",
-    "CONF_ENSURE_WINDOW",
-    "CONF_ENSURE_INTERVAL",
     "PLATFORMS",
     "GROUPABLE_DOMAINS",
 ]

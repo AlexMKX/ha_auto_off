@@ -40,8 +40,6 @@ def entry_with_groups():
                 "sensors": ["binary_sensor.office_motion"],
                 "sensor_templates": ["{{ is_state('schedule.work', 'on') }}"],
                 "delay": 15,
-                "ensure_window": 90,
-                "ensure_interval": 15,
             },
         }
     }
@@ -158,21 +156,18 @@ class TestDumpGroupBehavior:
         assert "sensors" in data
         assert "sensor_templates" in data
         assert "delay" in data
-        assert "ensure_window" in data
-        assert "ensure_interval" in data
 
-    async def test_data_preserves_non_default_ensure_settings(
-        self, hass_with_service
-    ):
-        """When the stored group overrides ensure_window / ensure_interval,
-        the dump must echo those values rather than the GroupConfig defaults."""
+    async def test_data_excludes_ensure_off_internals(self, hass_with_service):
+        """Ensure-off retry timings are module-level constants, not
+        per-group settings - the dump must not leak them into the
+        action payload."""
         response = await self._call(hass_with_service, "office_full")
         data = response["data"]
 
+        assert "ensure_window" not in data
+        assert "ensure_interval" not in data
         assert data["group_name"] == "office_full"
         assert data["delay"] == 15
-        assert data["ensure_window"] == 90
-        assert data["ensure_interval"] == 15
         assert data["sensor_templates"] == [
             "{{ is_state('schedule.work', 'on') }}"
         ]

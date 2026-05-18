@@ -42,17 +42,18 @@ def _build_group(
     targets=("light.kitchen",),
     sensors=("binary_sensor.motion",),
     delay=0,
-    ensure_window=60,
-    ensure_interval=10,
 ):
-    """Build a SensorGroup with stubbed sensor/target tracking."""
+    """Build a SensorGroup with stubbed sensor/target tracking.
+
+    Ensure-off retry timings are module-level constants
+    (``ENSURE_WINDOW_SEC``, ``ENSURE_INTERVAL_SEC``); patch them at the
+    test site if you need a different value.
+    """
     config = GroupConfig(
         targets=list(targets),
         sensors=list(sensors),
         sensor_templates=[],
         delay=delay,
-        ensure_window=ensure_window,
-        ensure_interval=ensure_interval,
     )
     group = SensorGroup(hass, "g", config, manager=None)
     return group
@@ -202,7 +203,8 @@ class TestEnsureLoopWindowExpires:
     the configured number of passes."""
 
     async def test_six_retries_for_60s_window_10s_interval(self, hass):
-        group = _build_group(hass, ensure_window=60, ensure_interval=10)
+        # Defaults are ENSURE_WINDOW_SEC=60 / ENSURE_INTERVAL_SEC=10.
+        group = _build_group(hass)
         targets = _replace_targets_with_stubs(
             group,
             # Always on; loop must keep retrying until the window is up.
@@ -289,48 +291,6 @@ class TestEnsureLoopIntegration:
         assert sentinel_ran.is_set()
 
 
-class TestGroupConfigEnsureDefaults:
-    """``GroupConfig`` must accept the new fields with sensible defaults
-    so existing config entries load unchanged."""
-
-    def test_defaults_when_fields_absent(self):
-        c = GroupConfig(
-            targets=["light.x"],
-            sensors=["binary_sensor.y"],
-            sensor_templates=[],
-            delay=5,
-        )
-        assert c.ensure_window == 60
-        assert c.ensure_interval == 10
-
-    def test_accepts_explicit_values(self):
-        c = GroupConfig(
-            targets=["light.x"],
-            sensors=["binary_sensor.y"],
-            sensor_templates=[],
-            delay=5,
-            ensure_window=120,
-            ensure_interval=15,
-        )
-        assert c.ensure_window == 120
-        assert c.ensure_interval == 15
-
-    def test_rejects_zero_interval(self):
-        with pytest.raises(ValueError):
-            GroupConfig(
-                targets=["light.x"],
-                sensors=["binary_sensor.y"],
-                sensor_templates=[],
-                delay=5,
-                ensure_interval=0,
-            )
-
-    def test_rejects_negative_window(self):
-        with pytest.raises(ValueError):
-            GroupConfig(
-                targets=["light.x"],
-                sensors=["binary_sensor.y"],
-                sensor_templates=[],
-                delay=5,
-                ensure_window=-1,
-            )
+# Ensure-off retry timings live as module-level constants
+# (ENSURE_WINDOW_SEC, ENSURE_INTERVAL_SEC) - their presence and
+# rejection-as-fields is covered in tests/test_ensure_constants.py.

@@ -18,6 +18,13 @@ from .group_entities import expand_group_targets  # noqa: E402
 
 _LOGGER = logging.getLogger(__name__)
 
+# Ensure-off retry timings. Held as module constants on purpose: production
+# data showed a single fixed value works for every group, and per-group
+# tuning never came up. Avoid promoting these to GroupConfig until a real
+# use case requires it (YAGNI).
+ENSURE_WINDOW_SEC = 60
+ENSURE_INTERVAL_SEC = 10
+
 
 def _missing_entity_log_level(hass: HomeAssistant) -> int:
     """Choose log level for "entity not in state machine" events.
@@ -44,21 +51,14 @@ class GroupConfig(BaseModel):
     sensors: list[str] = []
     sensor_templates: list[str] = []
     delay: int | str = 0
-    # Post-deadline ensure-off loop knobs (in SECONDS, unlike `delay`
-    # which is in minutes). See docs/superpowers/specs/
-    # 2026-05-16-ensure-off-loop-design.md.
-    ensure_window: int | str = 60
-    ensure_interval: int | str = 10
 
-    @model_validator(mode="after")
-    def _validate_ensure_settings(self) -> "GroupConfig":
-        # Only validate plain ints; templated strings are checked at
-        # render time inside ``get_ensure_window`` / ``get_ensure_interval``.
-        if isinstance(self.ensure_window, int) and self.ensure_window < 0:
-            raise ValueError("'ensure_window' must be >= 0")
-        if isinstance(self.ensure_interval, int) and self.ensure_interval <= 0:
-            raise ValueError("'ensure_interval' must be > 0")
-        return self
+    class Config:
+        """Reject unknown fields so a stale ``ensure_window`` /
+        ``ensure_interval`` in an old service payload surfaces as a
+        validation error rather than silently being stored on the
+        config entry."""
+
+        extra = "forbid"
 
     @field_validator("targets")
     @classmethod
@@ -500,41 +500,6 @@ class SensorGroup:
         except Exception as err:
             raise ValueError(f"Failed to render delay template: {self._config.delay}, result: {rendered}") from err
 
-    def _render_seconds_field(self, name: str, raw) -> int:
-        """Render a seconds-scale config field to int.
-
-        Plain ints are returned as-is to avoid hitting the Template engine
-        when no templating is actually needed (this also keeps unit tests
-        free of full ``hass.config`` mocks). Strings are rendered through
-        the standard Jinja path.
-        """
-        if isinstance(raw, int):
-            return raw
-        tpl = Template(str(raw), self.hass)
-        rendered = tpl.async_render()
-        try:
-            return int(rendered)
-        except Exception as err:
-            raise ValueError(
-                f"Failed to render {name} template: {raw}, result: {rendered}"
-            ) from err
-
-    async def get_ensure_window(self) -> int:
-        """Render ``ensure_window`` to seconds.
-
-        Unlike :meth:`get_delay`, this value is in seconds already - no
-        ``* 60`` conversion. The ensure loop operates on the device-timeout
-        scale (z2m default 10s), not on the minute scale.
-        """
-        return self._render_seconds_field("ensure_window", self._config.ensure_window)
-
-    async def get_ensure_interval(self) -> int:
-        """Render ``ensure_interval`` to seconds. See :meth:`get_ensure_window`."""
-        value = self._render_seconds_field("ensure_interval", self._config.ensure_interval)
-        if value <= 0:
-            raise ValueError(f"'ensure_interval' must be > 0, got {value}")
-        return value
-
     async def check_and_set_deadline(self):
         """Main method for checking and setting deadline.
 
@@ -862,17 +827,8 @@ class SensorGroup:
         """
         import time
 
-        try:
-            window = await self.get_ensure_window()
-            interval = await self.get_ensure_interval()
-        except ValueError as exc:
-            _LOGGER.warning(
-                "[%s] ensure: invalid config, skipping loop: %s",
-                self.group_id,
-                exc,
-            )
-            return
-
+        window = ENSURE_WINDOW_SEC
+        interval = ENSURE_INTERVAL_SEC
         if window <= 0:
             return
 
