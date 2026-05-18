@@ -306,8 +306,27 @@ class IntegrationManager:
         set changed since the last tick, re-sync downstream state so
         both our per-domain target group entities AND the in-process
         SensorGroup.self._targets list catch up. No-op when expansion
-        is stable across ticks."""
+        is stable across ticks.
+
+        Groups currently in their turn-off phase
+        (``SensorGroup._turn_off_lock.locked()``) are skipped on this
+        pass: rebuilding ``SensorGroup`` from under an active
+        ensure-loop would clobber the in-flight retries. The next
+        periodic tick will re-evaluate them.
+        """
         for group_name, config_dict in list(self._groups_data.items()):
+            group_obj = self.auto_off._groups.get(group_name)
+            if (
+                group_obj is not None
+                and getattr(group_obj, "_turn_off_lock", None) is not None
+                and group_obj._turn_off_lock.locked()
+            ):
+                _LOGGER.debug(
+                    "Re-expansion skipped for '%s': turn-off phase in progress",
+                    group_name,
+                )
+                continue
+
             raw_targets = list(config_dict.get("targets", []))
             expanded = tuple(expand_group_targets(self.hass, raw_targets))
             previous = self._last_expanded_targets.get(group_name)

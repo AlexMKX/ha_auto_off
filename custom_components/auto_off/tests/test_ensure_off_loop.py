@@ -261,15 +261,20 @@ class TestEnsureLoopCancellation:
 
 
 class TestEnsureLoopIntegration:
-    """``_turn_off_targets`` must dispatch ``_ensure_off_loop`` as a
-    detached task and expose the task handle on ``self._ensure_task``."""
+    """``_turn_off_targets`` runs ``_ensure_off_loop`` inline under
+    ``self._turn_off_lock``. The previous design used a detached task
+    exposed on ``self._ensure_task``; that was changed because the
+    detached task allowed external consumers
+    (check_and_set_deadline reentry, periodic rescan) to race against
+    the in-flight retry by treating it as "timer lost" and starting
+    a fresh deadline that cancelled the ensure-loop midway. Running
+    inline under the dedicated lock makes the turn-off phase atomic
+    relative to every external consumer.
+    """
 
-    async def test_turn_off_targets_starts_ensure_task(self, hass):
+    async def test_turn_off_targets_runs_ensure_loop_inline(self, hass):
         hass.services.async_call = AsyncMock()
         group = _build_group(hass)
-        # We don't care about the loop body here — just that the task is
-        # scheduled. Replace _ensure_off_loop with a sentinel coroutine
-        # so the test is independent of the loop's internals.
         sentinel_ran = asyncio.Event()
 
         async def _sentinel():
@@ -279,10 +284,9 @@ class TestEnsureLoopIntegration:
 
         await group._turn_off_targets()
 
-        # The task must be stored so cancellation hooks can reach it.
-        assert group._ensure_task is not None
-        # And the loop coroutine must have started.
-        await asyncio.wait_for(sentinel_ran.wait(), timeout=1.0)
+        # The ensure loop ran inline (not detached) - it must have
+        # completed by the time _turn_off_targets returned.
+        assert sentinel_ran.is_set()
 
 
 class TestGroupConfigEnsureDefaults:

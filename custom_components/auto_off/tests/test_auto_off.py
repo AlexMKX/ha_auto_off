@@ -24,6 +24,9 @@ class TestTurnOffRoutingThroughGroups:
             delay=0,
         )
         group = SensorGroup(hass, "k", config, manager=manager)
+        # The ensure-off retry loop runs inline inside _turn_off_targets;
+        # stub it so the test doesn't sleep for the full ensure_window.
+        group._ensure_off_loop = AsyncMock()
 
         await group._turn_off_targets()
 
@@ -50,6 +53,7 @@ class TestTurnOffRoutingThroughGroups:
             delay=0,
         )
         group = SensorGroup(hass, "k", config, manager=manager)
+        group._ensure_off_loop = AsyncMock()
 
         # Replace Target.turn_off with a spy
         target_spy = AsyncMock()

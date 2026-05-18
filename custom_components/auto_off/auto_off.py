@@ -423,6 +423,16 @@ class SensorGroup:
         # Post-deadline retry loop handle. See _ensure_off_loop and the
         # design spec (2026-05-16-ensure-off-loop-design.md).
         self._ensure_task: asyncio.Task | None = None
+        # Held during the entire turn-off phase (initial dispatch +
+        # ensure-off retry loop). External consumers
+        # (check_and_set_deadline reentries via state-change callbacks,
+        # periodic rescan) check ``self._turn_off_lock.locked()`` and
+        # skip their work cleanly while it is held, so a late
+        # ``Target X turned off`` event arriving mid-retry does not
+        # trigger a stray "no timer (recalculated)" deadline that would
+        # cancel the in-flight ensure-loop and push the remaining
+        # leaves out by another full ``delay``.
+        self._turn_off_lock = asyncio.Lock()
         self._init_from_config()
 
     def _init_from_config(self):
@@ -526,7 +536,27 @@ class SensorGroup:
         return value
 
     async def check_and_set_deadline(self):
-        """Main method for checking and setting deadline"""
+        """Main method for checking and setting deadline.
+
+        While ``self._turn_off_lock`` is held, the group is in the
+        middle of its turn-off / ensure-off phase. External callbacks
+        that would otherwise re-enter this method (e.g. a late
+        ``Target ... state changed: True -> False`` event from MQTT)
+        must NOT run their deadline logic here: doing so would observe
+        ``target_on=True && sensors_off=True && self._timer is None``
+        and route through ``_check_expired_deadlines``, which cancels
+        the in-flight ensure-loop and pushes the remaining leaves out
+        by another full ``delay``. Skipping cleanly is the right
+        answer; the post-turn-off re-evaluation at the tail of
+        ``_turn_off_targets`` picks up any genuine state change.
+        """
+        if self._turn_off_lock.locked():
+            _LOGGER.debug(
+                "[Group %s] check_and_set_deadline skipped: turn-off phase in progress",
+                self.group_id,
+            )
+            return
+
         async with self._lock:
             # Collect current state
             current_state = await self._collect_current_state()
@@ -722,58 +752,87 @@ class SensorGroup:
         return had_timer
 
     async def _turn_off_targets(self):
-        # Clear timer state BEFORE turning off - timer has fired
-        self._timer = None
-        self._timer_deadline = None
-        self._notify_deadline_change()
+        """Execute the full turn-off phase under ``self._turn_off_lock``.
 
-        # Primary path: one <domain>.turn_off call per live group entity.
-        # We dispatch to the REAL entity_id HA assigned (may differ from
-        # our `targets_group_entity_id()` prediction because `name=None`
-        # + `translation_key` changes the slugify output).
-        dispatched_domains: set[str] = set()
-        if self._manager is not None:
-            for entity_id in self._manager.get_group_member_group_entity_ids(
-                self.group_id
-            ):
+        The lock spans the initial dispatch AND the ensure-off retry
+        loop. While it is held, ``check_and_set_deadline`` (driven by
+        state-change callbacks for the targets we are turning off, or
+        by periodic rescan) bails out without scheduling a new deadline:
+        the in-flight retry loop already owns recovery for this group
+        and a parallel "no timer (recalculated)" branch would otherwise
+        cancel us and push the slow leaves out by another full
+        ``delay``.
+
+        After the lock is released we re-evaluate state exactly once so
+        any genuine change observed during the turn-off phase
+        (e.g. a sensor flipped back on, a user turned a target on
+        again) lands in the deadline state machine without further
+        prodding.
+        """
+        async with self._turn_off_lock:
+            # Clear timer state BEFORE turning off - timer has fired
+            self._timer = None
+            self._timer_deadline = None
+            self._notify_deadline_change()
+
+            # Primary path: one <domain>.turn_off call per live group
+            # entity. We dispatch to the REAL entity_id HA assigned
+            # (may differ from our ``targets_group_entity_id()``
+            # prediction because ``name=None`` + ``translation_key``
+            # changes the slugify output).
+            dispatched_domains: set[str] = set()
+            if self._manager is not None:
+                for entity_id in self._manager.get_group_member_group_entity_ids(
+                    self.group_id
+                ):
+                    domain = entity_id.split(".", 1)[0]
+                    dispatched_domains.add(domain)
+                    try:
+                        await self.hass.services.async_call(
+                            domain,
+                            "turn_off",
+                            {"entity_id": entity_id},
+                            blocking=False,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        _LOGGER.warning(
+                            "[Group %s] Group turn_off on %s failed: %s",
+                            self.group_id,
+                            entity_id,
+                            exc,
+                        )
+
+            # Fallback: for every target whose domain was NOT
+            # dispatched via a live group entity, issue an individual
+            # turn_off. Covers non-groupable domains (scene,
+            # input_boolean, ...) AND the case where a group entity
+            # exists in our bookkeeping but has no entity_id assigned
+            # yet.
+            tasks = []
+            for target in self._targets:
+                entity_id = getattr(target, "entity_id", "")
+                if "." not in entity_id:
+                    continue
                 domain = entity_id.split(".", 1)[0]
-                dispatched_domains.add(domain)
-                try:
-                    await self.hass.services.async_call(
-                        domain,
-                        "turn_off",
-                        {"entity_id": entity_id},
-                        blocking=False,
-                    )
-                except Exception as exc:  # noqa: BLE001 - never fail the whole expiry
-                    _LOGGER.warning(
-                        "[Group %s] Group turn_off on %s failed: %s",
-                        self.group_id,
-                        entity_id,
-                        exc,
-                    )
+                if domain in dispatched_domains:
+                    continue  # handled by group turn_off above
+                tasks.append(target.turn_off())
+            if tasks:
+                await asyncio.gather(*tasks)
+            _LOGGER.info("All targets turned off after deadline.")
 
-        # Fallback: for every target whose domain was NOT dispatched via a
-        # live group entity, issue an individual turn_off.  This covers
-        # both non-groupable domains (scene, input_boolean, ...) AND the
-        # case where a group entity exists in our bookkeeping but has no
-        # entity_id assigned yet (e.g. not fully added to HA).
-        tasks = []
-        for target in self._targets:
-            entity_id = getattr(target, "entity_id", "")
-            if "." not in entity_id:
-                continue
-            domain = entity_id.split(".", 1)[0]
-            if domain in dispatched_domains:
-                continue  # handled by group turn_off above
-            tasks.append(target.turn_off())
-        if tasks:
-            await asyncio.gather(*tasks)
-        _LOGGER.info("All targets turned off after deadline.")
+            # Run the ensure-off retry loop INLINE so it inherits the
+            # turn-off lock and external callbacks remain suppressed
+            # until every retry pass is done. No external code should
+            # cancel it - cancellation now flows through the lock
+            # release after the loop finishes naturally.
+            await self._ensure_off_loop()
 
-        # Detached retry loop. See _ensure_off_loop for semantics.
-        self._cancel_ensure_task()
-        self._ensure_task = asyncio.create_task(self._ensure_off_loop())
+        # Lock released here. Pending events (state-change callbacks
+        # for targets that took longer to ack, periodic rescan ticks)
+        # naturally re-fire ``check_and_set_deadline`` on their own
+        # schedule and pick up any state change that happened during
+        # the turn-off phase. No explicit post-call needed.
 
     def _cancel_ensure_task(self) -> None:
         """Cancel an active ensure-off loop, if any. Idempotent."""
