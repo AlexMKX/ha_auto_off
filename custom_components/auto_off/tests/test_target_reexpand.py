@@ -173,3 +173,188 @@ class TestRootSubscription:
         await asyncio.sleep(0)  # let any spawned task run
 
         assert calls["n"] == 0
+
+
+class TestReexpandDrivesDeadline:
+    """Membership changes feed the existing deadline state machine.
+
+    Validates: when a new on leaf appears, the deadline starts (provided
+    sensors are off); when the only on leaf is removed, the deadline
+    cancels. The tests assert on the deadline-change callback the
+    integration manager registers, not on private SensorGroup fields.
+    """
+
+    async def test_new_on_leaf_starts_deadline_when_sensors_off(self):
+        hass = _hass_for_root(
+            "light.example_root",
+            ["light.leaf_a"],
+            member_states={"light.leaf_a": "off"},
+        )
+        config = GroupConfig(
+            targets=["light.example_root"],
+            sensors=["binary_sensor.motion"],
+            sensor_templates=[],
+            delay=0,
+        )
+
+        deadline_events: list[tuple[str, str | None]] = []
+
+        def on_deadline_change(group_id, deadline_iso):
+            deadline_events.append((group_id, deadline_iso))
+
+        callback_box = {}
+
+        def fake_track(hass_arg, entity_ids, callback):
+            if "light.example_root" in entity_ids:
+                callback_box["cb"] = callback
+            return MagicMock(name="unsub")
+
+        with patch(
+            "custom_components.auto_off.auto_off.async_track_state_change_event",
+            side_effect=fake_track,
+        ):
+            group = SensorGroup(
+                hass, "g", config,
+                on_deadline_change=on_deadline_change,
+                manager=None,
+            )
+            await group._async_init_targets()
+
+        # Flush first-run init via a state collection pass.
+        await group.check_and_set_deadline()
+        deadline_events.clear()
+
+        # Update root state so expand_group_targets sees the new membership
+        # (pitfall 3: without this, expand returns the old list and no diff fires).
+        def get_with_new_leaf(eid):
+            if eid == "light.example_root":
+                st = MagicMock()
+                st.attributes = {"entity_id": ["light.leaf_a", "light.leaf_b"]}
+                st.state = "on"
+                return st
+            if eid == "light.leaf_a":
+                st = MagicMock()
+                st.attributes = {}
+                st.state = "off"
+                return st
+            if eid == "light.leaf_b":
+                st = MagicMock()
+                st.attributes = {}
+                st.state = "on"
+                return st
+            return None
+
+        hass.states.get.side_effect = get_with_new_leaf
+
+        old_state = MagicMock()
+        old_state.attributes = {"entity_id": ["light.leaf_a"]}
+        new_state = MagicMock()
+        new_state.attributes = {"entity_id": ["light.leaf_a", "light.leaf_b"]}
+        event = MagicMock()
+        event.data = {"old_state": old_state, "new_state": new_state}
+
+        # Stub sensor as off so deadline can start.
+        for s in group._sensors:
+            s.is_on = AsyncMock(return_value=False)
+
+        result = callback_box["cb"](event)
+        if asyncio.iscoroutine(result):
+            await result
+        # Allow the spawned task to run.
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+        # delay=0 means deadline fires immediately and clears, but a
+        # transition (None -> set, then set -> None) must be observed.
+        # The strongest claim we can make without timing assumptions:
+        # the callback was invoked at least once with a non-None
+        # deadline_iso OR turn_off was dispatched.
+        non_null = [e for e in deadline_events if e[1] is not None]
+        turn_off_called = hass.services.async_call.await_count > 0
+        assert non_null or turn_off_called
+
+    async def test_removing_only_on_leaf_cancels_deadline(self):
+        hass = _hass_for_root(
+            "light.example_root",
+            ["light.leaf_a"],
+            member_states={"light.leaf_a": "on"},
+        )
+        config = GroupConfig(
+            targets=["light.example_root"],
+            sensors=["binary_sensor.motion"],
+            sensor_templates=[],
+            delay=10,  # non-zero so deadline persists
+        )
+
+        deadline_events: list[tuple[str, str | None]] = []
+
+        def on_deadline_change(group_id, deadline_iso):
+            deadline_events.append((group_id, deadline_iso))
+
+        callback_box = {}
+
+        def fake_track(hass_arg, entity_ids, callback):
+            if "light.example_root" in entity_ids:
+                callback_box["cb"] = callback
+            return MagicMock(name="unsub")
+
+        with patch(
+            "custom_components.auto_off.auto_off.async_track_state_change_event",
+            side_effect=fake_track,
+        ):
+            group = SensorGroup(
+                hass, "g", config,
+                on_deadline_change=on_deadline_change,
+                manager=None,
+            )
+            await group._async_init_targets()
+
+        # Stub sensors as off so a deadline starts.
+        for s in group._sensors:
+            s.is_on = AsyncMock(return_value=False)
+        await group.check_and_set_deadline()
+        # _handle_first_run spawns create_task(_set_deadline_from_delay);
+        # flush several event-loop ticks so the task runs and calls
+        # _notify_deadline_change.
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert any(e[1] is not None for e in deadline_events), (
+            "precondition: a deadline must have been set"
+        )
+        deadline_events.clear()
+
+        # Update root state so expand_group_targets returns empty (no leaves)
+        # and leaf_a is gone from the system (pitfall 1: empty list collapses
+        # root to a leaf; we make the root state "off" so any_target_on=False).
+        def updated_get(eid):
+            if eid == "light.example_root":
+                st = MagicMock()
+                st.attributes = {"entity_id": []}
+                st.state = "off"
+                return st
+            # leaf_a is gone from the system — return None to simulate removal.
+            if eid == "light.leaf_a":
+                return None
+            return None
+
+        hass.states.get.side_effect = updated_get
+
+        # Remove leaf_a entirely.
+        old_state = MagicMock()
+        old_state.attributes = {"entity_id": ["light.leaf_a"]}
+        new_state = MagicMock()
+        new_state.attributes = {"entity_id": []}
+        event = MagicMock()
+        event.data = {"old_state": old_state, "new_state": new_state}
+
+        result = callback_box["cb"](event)
+        if asyncio.iscoroutine(result):
+            await result
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+        # After removing the only on leaf, the deadline must be
+        # cancelled (callback fired with None).
+        assert any(
+            e[1] is None for e in deadline_events
+        ), f"expected a None deadline notification, got {deadline_events!r}"
