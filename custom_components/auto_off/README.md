@@ -61,6 +61,27 @@ data:
   delay: 5
 ```
 
+### Target group expansion
+
+Targets that are HA group entities (`light.*` groups, helper `group:`,
+Magic Areas light groups, switch/cover/fan/media_player/lock/valve groups)
+are expanded recursively to their leaves. Auto Off subscribes to and
+operates on the actual end devices so:
+
+- The deadline starts as soon as ANY leaf turns on (independent of the
+  group's any-on / all-on mode).
+- The ensure-off retry loop can tell which specific leaves failed to
+  switch off.
+- Editing the root group's membership at runtime (UI edit, helper group
+  member changes) is picked up: Auto Off re-expands and re-subscribes
+  without a config-entry reload.
+
+Limitation: only the root targets listed in the group config are watched
+for membership changes. If a nested group inside a root changes its
+members, that change is not picked up until the root entity re-emits a
+state change. Reload the auto_off config entry (or restart HA) to force
+a full re-expansion.
+
 ### `auto_off.delete_group`
 
 Remove a group and every entity it spawned.
