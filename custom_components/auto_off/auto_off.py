@@ -459,6 +459,7 @@ class SensorGroup:
         self._root_targets: list[str] = []
         self._root_unsubs: list[Callable[[], None]] = []
         self._current_leaves: list[str] = []
+        self._targets_initialised: bool = False
         self._init_from_config()
 
     def _init_from_config(self):
@@ -496,12 +497,42 @@ class SensorGroup:
     async def _async_init_targets(self) -> None:
         """Initialise root subscriptions and the leaf target list.
 
-        Splits the original synchronous expansion path so that we can
-        ``await`` Target.start_tracking and serialise re-expansions
-        under ``self._lock``.
+        Idempotent: the background task spawned by ``_init_from_config``
+        and an explicit call from tests or ``update_group_config`` must
+        produce the same final state regardless of ordering.  The first
+        call wins; subsequent calls are no-ops.
         """
+        if self._targets_initialised:
+            return
+        self._targets_initialised = True
         self._root_targets = list(self._config.targets)
+        for root_id in self._root_targets:
+            if not valid_entity_id(root_id):
+                _LOGGER.warning(
+                    "[Group %s] Skipping invalid root target %r",
+                    self.group_id,
+                    root_id,
+                )
+                continue
+            unsub = async_track_state_change_event(
+                self.hass, [root_id], self._on_root_attributes_change
+            )
+            self._root_unsubs.append(unsub)
         await self._reexpand_targets(initial=True)
+
+    def _on_root_attributes_change(self, event) -> None:
+        """HA state-change callback for a root target.
+
+        Compares old/new ``attributes.entity_id`` and triggers re-expand
+        only when membership actually changed. Spawns a task because
+        ``_reexpand_targets`` is async; the HA event bus does not wait
+        on us, which is exactly what we want for long expansions.
+        """
+        old_members = _extract_member_list(event.data.get("old_state"))
+        new_members = _extract_member_list(event.data.get("new_state"))
+        if old_members == new_members:
+            return
+        asyncio.create_task(self._reexpand_targets())
 
     async def _reexpand_targets(self, *, initial: bool = False) -> None:
         """Recompute leaves and diff against the current set.

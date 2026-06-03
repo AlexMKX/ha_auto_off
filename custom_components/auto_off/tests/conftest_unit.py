@@ -30,6 +30,7 @@ def hass():
     hass.loop.time = MagicMock(return_value=1000.0)
     hass.states = MagicMock()
     hass.services = MagicMock()
+    hass.bus = MagicMock()
     hass.config_entries = MagicMock()
     hass.async_create_task = MagicMock()
     return hass
