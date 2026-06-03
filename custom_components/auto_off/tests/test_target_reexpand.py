@@ -398,6 +398,10 @@ class TestUnload:
 
         await group.async_unload()
 
-        # Validate: at least the root subscription was released.
-        # (Sensor and target subs use stop_tracking, not the root unsub list.)
-        assert "sub-1" in unsubs_called or len(unsubs_called) >= 1
+        # The first installation is the root subscription (per the
+        # ordering in _async_init_targets); its unsub must run on unload.
+        # Without the unload fix this assertion would fail because the
+        # root unsub callback would never be invoked.
+        assert "sub-1" in unsubs_called, (
+            f"root subscription unsub was not called; got {unsubs_called!r}"
+        )
