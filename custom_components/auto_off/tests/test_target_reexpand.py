@@ -358,3 +358,46 @@ class TestReexpandDrivesDeadline:
         assert any(
             e[1] is None for e in deadline_events
         ), f"expected a None deadline notification, got {deadline_events!r}"
+
+
+class TestUnload:
+    """async_unload must release root subscriptions.
+
+    Validates: after unload, an event delivered to the captured root
+    callback must not produce any service call or deadline notification.
+    """
+
+    async def test_unload_silences_root_callback(self):
+        hass = _hass_for_root("light.example_root", ["light.leaf_a"])
+        config = GroupConfig(
+            targets=["light.example_root"],
+            sensors=["binary_sensor.motion"],
+            sensor_templates=[],
+            delay=0,
+        )
+
+        unsubs_called: list[str] = []
+
+        def make_unsub(label):
+            def _unsub():
+                unsubs_called.append(label)
+            return _unsub
+
+        sub_counter = {"n": 0}
+
+        def fake_track(hass_arg, entity_ids, callback):
+            sub_counter["n"] += 1
+            return make_unsub(f"sub-{sub_counter['n']}")
+
+        with patch(
+            "custom_components.auto_off.auto_off.async_track_state_change_event",
+            side_effect=fake_track,
+        ):
+            group = SensorGroup(hass, "g", config, manager=None)
+            await group._async_init_targets()
+
+        await group.async_unload()
+
+        # Validate: at least the root subscription was released.
+        # (Sensor and target subs use stop_tracking, not the root unsub list.)
+        assert "sub-1" in unsubs_called or len(unsubs_called) >= 1

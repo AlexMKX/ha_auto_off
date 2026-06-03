@@ -998,6 +998,20 @@ class SensorGroup:
     async def async_unload(self):
         """Cleans up group resources"""
         async with self._lock:
+            # Release root membership subscriptions before tearing down
+            # sensors/targets so a late root state-change event cannot
+            # spawn a re-expand task during shutdown.
+            for unsub in self._root_unsubs:
+                try:
+                    unsub()
+                except Exception as exc:  # noqa: BLE001
+                    _LOGGER.debug(
+                        "[Group %s] root unsub failed: %s",
+                        self.group_id,
+                        exc,
+                    )
+            self._root_unsubs.clear()
+
             # Cancel timer
             self._cancel_deadline()
 
