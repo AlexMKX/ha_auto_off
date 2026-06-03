@@ -843,8 +843,9 @@ class SensorGroup:
                 )
                 return
 
+            targets_snapshot = list(self._targets)
             still_on = []
-            for target in self._targets:
+            for target in targets_snapshot:
                 try:
                     if await target.is_on():
                         still_on.append(target)
@@ -881,7 +882,7 @@ class SensorGroup:
 
         # Window expired with at least one target still on.
         try:
-            remaining = sum(1 for t in self._targets if await t.is_on())
+            remaining = sum(1 for t in list(self._targets) if await t.is_on())
         except Exception:
             remaining = -1
         _LOGGER.warning(

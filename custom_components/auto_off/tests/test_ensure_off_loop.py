@@ -294,3 +294,75 @@ class TestEnsureLoopIntegration:
 # Ensure-off retry timings live as module-level constants
 # (ENSURE_WINDOW_SEC, ENSURE_INTERVAL_SEC) - their presence and
 # rejection-as-fields is covered in tests/test_ensure_constants.py.
+
+
+class TestEnsureLoopIteratesSnapshot:
+    """ensure-off loop must iterate a snapshot of self._targets so a
+    concurrent _reexpand_targets that mutates the list during an
+    `await target.is_on()` point does not skip retries."""
+
+    async def test_target_added_mid_pass_is_not_iterated_in_current_pass(self, hass):
+        from custom_components.auto_off.auto_off import (
+            ENSURE_INTERVAL_SEC,
+            ENSURE_WINDOW_SEC,
+        )
+
+        group = _build_group(hass, targets=("light.a",))
+        _replace_targets_with_stubs(group, {"light.a": [True, False]})
+
+        # Stub all_sensors_off so the loop runs at least one pass.
+        group.all_sensors_off = AsyncMock(return_value=True)
+
+        # `appended` is added to self._targets DURING iteration of the
+        # current pass (simulating a concurrent _reexpand_targets that
+        # mutates the list while we are awaiting target.is_on()). If the
+        # loop iterates self._targets directly, it will pick up
+        # `appended` and call turn_off on it in the same pass. If it
+        # iterates a snapshot taken at pass start, `appended` is invisible
+        # to this pass.
+        appended = MagicMock()
+        appended.entity_id = "light.b"
+        appended.is_on = AsyncMock(return_value=True)
+        appended.turn_off = AsyncMock()
+
+        real_targets = group._targets
+        existing_stub = real_targets[0]
+        original_is_on = existing_stub.is_on
+        mutated = {"done": False}
+
+        async def is_on_with_mutation():
+            # First call: mutate the list mid-pass, then return original
+            # value. Subsequent calls: just return the original value.
+            if not mutated["done"]:
+                real_targets.append(appended)
+                mutated["done"] = True
+            return await original_is_on()
+
+        existing_stub.is_on = is_on_with_mutation
+
+        sleep_calls = {"n": 0}
+
+        async def fake_sleep(_interval):
+            # Advance the loop deterministically. After two sleeps drop
+            # everything so the loop terminates promptly.
+            sleep_calls["n"] += 1
+            if sleep_calls["n"] >= 2:
+                real_targets.clear()
+
+        with patch(
+            "custom_components.auto_off.auto_off.asyncio.sleep",
+            new=fake_sleep,
+        ), patch(
+            "custom_components.auto_off.auto_off.ENSURE_WINDOW_SEC",
+            ENSURE_WINDOW_SEC,
+        ), patch(
+            "custom_components.auto_off.auto_off.ENSURE_INTERVAL_SEC",
+            ENSURE_INTERVAL_SEC,
+        ):
+            await group._ensure_off_loop()
+
+        # `appended` was added DURING pass 1's iteration; the snapshot
+        # of _targets taken at pass start did not include it, so its
+        # turn_off must NOT have been called in pass 1. By pass 2 the
+        # fake_sleep cleared the list, so it is also not iterated there.
+        appended.turn_off.assert_not_called()
