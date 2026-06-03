@@ -19,8 +19,12 @@ from homeassistant.components.group.light import LightGroup
 from homeassistant.components.group.lock import LockGroup
 from homeassistant.components.group.media_player import MediaPlayerGroup
 from homeassistant.components.group.switch import SwitchGroup
-from homeassistant.components.group.valve import ValveGroup
 from homeassistant.core import Event, EventStateChangedData, callback
+
+try:
+    from homeassistant.components.group.valve import ValveGroup
+except ImportError:
+    ValveGroup = None  # type: ignore[assignment,misc]
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.event import async_track_state_change_event
 
@@ -53,19 +57,23 @@ def _install_member_listener(entity) -> Callable[[], None] | None:
         if entity.hass is not None:
             entity.async_write_ha_state()
 
-    return async_track_state_change_event(
-        entity.hass, list(entity._entity_ids), _on_member_state_change
-    )
+    return async_track_state_change_event(entity.hass, list(entity._entity_ids), _on_member_state_change)
+
 
 # Map HA domain -> HA stdlib *Group class.  Keep in sync with GROUPABLE_DOMAINS.
+# ValveGroup may be absent on older HA versions (<= 2025.1); filter None entries.
 _TARGET_GROUP_CLASSES: dict[str, type] = {
-    "light": LightGroup,
-    "switch": SwitchGroup,
-    "fan": FanGroup,
-    "cover": CoverGroup,
-    "media_player": MediaPlayerGroup,
-    "lock": LockGroup,
-    "valve": ValveGroup,
+    k: v
+    for k, v in {
+        "light": LightGroup,
+        "switch": SwitchGroup,
+        "fan": FanGroup,
+        "cover": CoverGroup,
+        "media_player": MediaPlayerGroup,
+        "lock": LockGroup,
+        "valve": ValveGroup,
+    }.items()
+    if v is not None
 }
 
 
@@ -127,9 +135,7 @@ class AutoOffSensorsGroup(BinarySensorGroup):
             self._auto_off_member_unsub = None
         await super().async_will_remove_from_hass()
 
-    def update_members(
-        self, entity_ids: list[str], sensor_templates: list[str]
-    ) -> None:
+    def update_members(self, entity_ids: list[str], sensor_templates: list[str]) -> None:
         """Update members and templates after a set_group call.
 
         Rebuilds the state-change subscription for the new member list
@@ -220,8 +226,7 @@ def _make_targets_group_class(domain: str, base: type) -> type:
 
 # Pre-build one class per groupable domain.
 TARGET_GROUP_ENTITY_CLASSES: dict[str, type] = {
-    domain: _make_targets_group_class(domain, base)
-    for domain, base in _TARGET_GROUP_CLASSES.items()
+    domain: _make_targets_group_class(domain, base) for domain, base in _TARGET_GROUP_CLASSES.items()
 }
 
 

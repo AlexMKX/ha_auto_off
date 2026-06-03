@@ -46,10 +46,7 @@ class TestMissingEntityLogLevel:
         caplog.set_level(logging.INFO, logger="custom_components.auto_off.auto_off")
         await sensor._check_entity_state()
 
-        matching = [
-            r for r in caplog.records
-            if "binary_sensor.late" in r.message and "state not found" in r.message
-        ]
+        matching = [r for r in caplog.records if "binary_sensor.late" in r.message and "state not found" in r.message]
         assert len(matching) == 1, f"expected exactly one missing-entity log, got {matching}"
         assert matching[0].levelno == logging.INFO
 
@@ -66,10 +63,7 @@ class TestMissingEntityLogLevel:
         caplog.set_level(logging.INFO, logger="custom_components.auto_off.auto_off")
         await sensor._check_entity_state()
 
-        matching = [
-            r for r in caplog.records
-            if "binary_sensor.late" in r.message and "state not found" in r.message
-        ]
+        matching = [r for r in caplog.records if "binary_sensor.late" in r.message and "state not found" in r.message]
         assert len(matching) == 1
         assert matching[0].levelno == logging.WARNING
 
@@ -86,9 +80,6 @@ class TestMissingEntityLogLevel:
         caplog.set_level(logging.INFO, logger="custom_components.auto_off.auto_off")
         await sensor._check_entity_state()
 
-        matching = [
-            r for r in caplog.records
-            if "binary_sensor.late" in r.message and "state not found" in r.message
-        ]
+        matching = [r for r in caplog.records if "binary_sensor.late" in r.message and "state not found" in r.message]
         assert len(matching) == 1
         assert matching[0].levelno == logging.WARNING

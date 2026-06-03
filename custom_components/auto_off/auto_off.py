@@ -514,9 +514,7 @@ class SensorGroup:
                     root_id,
                 )
                 continue
-            unsub = async_track_state_change_event(
-                self.hass, [root_id], self._on_root_attributes_change
-            )
+            unsub = async_track_state_change_event(self.hass, [root_id], self._on_root_attributes_change)
             self._root_unsubs.append(unsub)
         await self._reexpand_targets(initial=True)
 
@@ -547,9 +545,7 @@ class SensorGroup:
             new_leaf_set = set(new_leaves)
             current_leaf_set = set(self._current_leaves)
             added = [eid for eid in new_leaves if eid not in current_leaf_set]
-            removed = [
-                eid for eid in self._current_leaves if eid not in new_leaf_set
-            ]
+            removed = [eid for eid in self._current_leaves if eid not in new_leaf_set]
 
             for entity_id in removed:
                 target = next(
@@ -851,9 +847,7 @@ class SensorGroup:
             # changes the slugify output).
             dispatched_domains: set[str] = set()
             if self._manager is not None:
-                for entity_id in self._manager.get_group_member_group_entity_ids(
-                    self.group_id
-                ):
+                for entity_id in self._manager.get_group_member_group_entity_ids(self.group_id):
                     domain = entity_id.split(".", 1)[0]
                     dispatched_domains.add(domain)
                     try:

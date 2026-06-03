@@ -20,11 +20,9 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from custom_components.auto_off.group_entities import (
-    AutoOffSensorsGroup,
     TARGET_GROUP_ENTITY_CLASSES,
+    AutoOffSensorsGroup,
 )
 
 
@@ -50,9 +48,7 @@ class TestSensorsGroupResubscribes:
     """``AutoOffSensorsGroup.update_members`` must drop the previous
     subscription and install a fresh one for the new member list."""
 
-    async def test_install_subscription_after_added_to_hass(
-        self, monkeypatch
-    ):
+    async def test_install_subscription_after_added_to_hass(self, monkeypatch):
         """First subscription gets installed when the entity is attached
         to hass via the standard ``async_added_to_hass`` lifecycle."""
         tracker = _patch_tracker(monkeypatch)
@@ -73,9 +69,7 @@ class TestSensorsGroupResubscribes:
 
         assert any(c["entity_ids"] == ["binary_sensor.a"] for c in tracker), tracker
 
-    async def test_update_members_cancels_previous_subscription(
-        self, monkeypatch
-    ):
+    async def test_update_members_cancels_previous_subscription(self, monkeypatch):
         tracker = _patch_tracker(monkeypatch)
         entity = AutoOffSensorsGroup(
             group_name="g",
@@ -101,9 +95,7 @@ class TestSensorsGroupResubscribes:
         # Old subscription cancelled exactly once.
         first_unsub.assert_called_once()
 
-    async def test_update_members_installs_subscription_for_new_ids(
-        self, monkeypatch
-    ):
+    async def test_update_members_installs_subscription_for_new_ids(self, monkeypatch):
         tracker = _patch_tracker(monkeypatch)
         entity = AutoOffSensorsGroup(
             group_name="g",
@@ -133,12 +125,10 @@ class TestTargetsGroupResubscribes:
     """The dynamically-built per-domain target groups need the same
     rewiring on ``update_members``."""
 
-    async def test_light_targets_group_resubscribes_on_update(
-        self, monkeypatch
-    ):
+    async def test_light_targets_group_resubscribes_on_update(self, monkeypatch):
         tracker = _patch_tracker(monkeypatch)
-        LightTargets = TARGET_GROUP_ENTITY_CLASSES["light"]
-        entity = LightTargets(group_name="g", entity_ids=["light.a"])
+        light_targets_cls = TARGET_GROUP_ENTITY_CLASSES["light"]
+        entity = light_targets_cls(group_name="g", entity_ids=["light.a"])
         hass = MagicMock()
         entity.hass = hass
         # async_update_group_state on the real LightGroup reaches into
@@ -169,9 +159,7 @@ class TestUpdateMembersRefreshesState:
     wait for stable sensors.
     """
 
-    async def test_update_members_calls_async_update_group_state(
-        self, monkeypatch
-    ):
+    async def test_update_members_calls_async_update_group_state(self, monkeypatch):
         _patch_tracker(monkeypatch)
         entity = AutoOffSensorsGroup(
             group_name="g",

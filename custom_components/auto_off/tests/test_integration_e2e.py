@@ -264,6 +264,57 @@ class TestAutoOffIntegrationE2E:
             f"Expected late_target_state to be 'off' after auto-off timer, " f"got: {state['state']}"
         )
 
+    async def test_root_group_target_expands_and_drives_deadline(self, ha_instance):
+        """Validates: a root target that is an HA light_group is
+        expanded; toggling one member with the presence sensor off
+        causes auto_off to turn that member off after the delay.
+
+        This pins the production regression: the original bug had the
+        integration tracking the root group itself, so single-member
+        toggles never triggered the deadline.
+        """
+        entries = await ha_instance.get_config_entries("auto_off")
+        if not entries:
+            await ha_instance.add_integration("auto_off", {"poll_interval": 5})
+            await asyncio.sleep(2)
+
+        await ha_instance.call_service(
+            "auto_off",
+            "set_group",
+            {
+                "group_name": "reexpand",
+                "targets": ["light.reexpand_root"],
+                "sensors": ["binary_sensor.reexpand_motion"],
+                "delay": 0,
+            },
+        )
+        await asyncio.sleep(2)
+
+        # Ensure presence sensor is off (no motion).
+        await ha_instance.call_service(
+            "input_boolean",
+            "turn_off",
+            {"entity_id": "input_boolean.reexpand_motion_state"},
+        )
+        await asyncio.sleep(1)
+
+        # Turn on a single member of the group.
+        await ha_instance.call_service(
+            "input_boolean",
+            "turn_on",
+            {"entity_id": "input_boolean.reexpand_leaf_a_state"},
+        )
+
+        # delay=0: auto_off should turn it off promptly. Allow slack for
+        # event propagation and the ensure-off loop interval (10s by
+        # default, capped at 60s). 40 iterations × 1s = 40s total.
+        for _ in range(40):
+            await asyncio.sleep(1)
+            state = await ha_instance.get_state("light.reexpand_leaf_a")
+            if state and state.get("state") == "off":
+                break
+        else:
+            raise AssertionError("light.reexpand_leaf_a never turned off; root expansion failed")
 
     @pytest.mark.docker_e2e
     async def test_group_entities_are_created_per_domain(self, ha_instance):
@@ -300,8 +351,7 @@ class TestAutoOffIntegrationE2E:
             entities = await ha_instance.get_states()
             ids = {e["entity_id"] for e in entities}
             pytest.fail(
-                "Group entities did not appear in states: "
-                f"{sorted(i for i in ids if 'auto_off_e2e_groups' in i)}"
+                "Group entities did not appear in states: " f"{sorted(i for i in ids if 'auto_off_e2e_groups' in i)}"
             )
 
 

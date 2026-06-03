@@ -194,9 +194,7 @@ class TestTargetSubscribesEvenWhenEntityMissing:
         await target.start_tracking()
 
         assert len(tracker_calls) == 1
-        assert tracker_calls[0]["entity_ids"] == [
-            "light.magic_areas_light_groups_kabinet_sasha_all_lights"
-        ]
+        assert tracker_calls[0]["entity_ids"] == ["light.magic_areas_light_groups_kabinet_sasha_all_lights"]
         assert target._unsub is tracker_calls[0]["unsub"]
 
     async def test_invalid_entity_id_is_still_skipped(self, fake_hass, monkeypatch):

@@ -53,9 +53,7 @@ def hass_for_group():
 
 
 class TestTurnOffRace:
-    async def test_callback_during_turn_off_does_not_reschedule_deadline(
-        self, hass_for_group
-    ):
+    async def test_callback_during_turn_off_does_not_reschedule_deadline(self, hass_for_group):
         """While ``_turn_off_targets`` is running, an incoming
         target-state-change callback must NOT schedule a new deadline
         via ``check_and_set_deadline``. Otherwise the ensure-loop is
@@ -104,9 +102,7 @@ class TestTurnOffRace:
         ensure_release.set()
         await turn_off_task
 
-    async def test_turn_off_phase_lock_released_after_completion(
-        self, hass_for_group
-    ):
+    async def test_turn_off_phase_lock_released_after_completion(self, hass_for_group):
         """After ``_turn_off_targets`` finishes, callbacks must be able
         to schedule a fresh deadline again."""
         group = _build_group(hass_for_group, targets=["light.kitchen"])

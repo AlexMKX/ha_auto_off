@@ -57,9 +57,7 @@ PLATFORMS = [
 
 # Domains for which HA ships a group platform that we can drive.
 # Keys map GroupConfig.targets entity-id prefix to the HA group domain.
-GROUPABLE_DOMAINS = frozenset(
-    {"light", "switch", "fan", "cover", "media_player", "lock", "valve"}
-)
+GROUPABLE_DOMAINS = frozenset({"light", "switch", "fan", "cover", "media_player", "lock", "valve"})
 
 __all__ = [
     "DOMAIN",

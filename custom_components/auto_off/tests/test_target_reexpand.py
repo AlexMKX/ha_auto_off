@@ -10,11 +10,10 @@ Spec: docs/superpowers/specs/2026-06-03-target-reexpand-design.md
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
-from custom_components.auto_off.auto_off import _extract_member_list
+from custom_components.auto_off.auto_off import GroupConfig, SensorGroup, _extract_member_list
 
 
 class TestExtractMemberList:
@@ -52,12 +51,6 @@ class TestExtractMemberList:
         state = MagicMock()
         state.attributes = {"entity_id": ["light.a", "light.b"]}
         assert _extract_member_list(state) == ["light.a", "light.b"]
-
-
-import asyncio
-from unittest.mock import AsyncMock, patch
-
-from custom_components.auto_off.auto_off import GroupConfig, SensorGroup
 
 
 def _hass_for_root(root_id, members, member_states=None):
@@ -214,7 +207,9 @@ class TestReexpandDrivesDeadline:
             side_effect=fake_track,
         ):
             group = SensorGroup(
-                hass, "g", config,
+                hass,
+                "g",
+                config,
                 on_deadline_change=on_deadline_change,
                 manager=None,
             )
@@ -303,7 +298,9 @@ class TestReexpandDrivesDeadline:
             side_effect=fake_track,
         ):
             group = SensorGroup(
-                hass, "g", config,
+                hass,
+                "g",
+                config,
                 on_deadline_change=on_deadline_change,
                 manager=None,
             )
@@ -318,9 +315,7 @@ class TestReexpandDrivesDeadline:
         # _notify_deadline_change.
         for _ in range(5):
             await asyncio.sleep(0)
-        assert any(e[1] is not None for e in deadline_events), (
-            "precondition: a deadline must have been set"
-        )
+        assert any(e[1] is not None for e in deadline_events), "precondition: a deadline must have been set"
         deadline_events.clear()
 
         # Update root state so expand_group_targets returns empty (no leaves)
@@ -381,6 +376,7 @@ class TestUnload:
         def make_unsub(label):
             def _unsub():
                 unsubs_called.append(label)
+
             return _unsub
 
         sub_counter = {"n": 0}
@@ -402,6 +398,4 @@ class TestUnload:
         # ordering in _async_init_targets); its unsub must run on unload.
         # Without the unload fix this assertion would fail because the
         # root unsub callback would never be invoked.
-        assert "sub-1" in unsubs_called, (
-            f"root subscription unsub was not called; got {unsubs_called!r}"
-        )
+        assert "sub-1" in unsubs_called, f"root subscription unsub was not called; got {unsubs_called!r}"

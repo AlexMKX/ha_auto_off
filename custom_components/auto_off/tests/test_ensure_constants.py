@@ -22,7 +22,7 @@ class TestEnsureConstants:
 
     def test_group_config_rejects_ensure_window_field(self):
         """``ensure_window`` is not a per-group setting."""
-        with pytest.raises(Exception):
+        with pytest.raises(Exception, match="."):  # pydantic raises ValidationError
             GroupConfig(
                 targets=["light.x"],
                 sensors=["binary_sensor.y"],
@@ -33,7 +33,7 @@ class TestEnsureConstants:
 
     def test_group_config_rejects_ensure_interval_field(self):
         """``ensure_interval`` is not a per-group setting either."""
-        with pytest.raises(Exception):
+        with pytest.raises(Exception, match="."):  # pydantic raises ValidationError
             GroupConfig(
                 targets=["light.x"],
                 sensors=["binary_sensor.y"],

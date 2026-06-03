@@ -80,9 +80,7 @@ class IntegrationManager:
             return
         deadline_entity.update_deadline(deadline_iso)
 
-    def register_platform_callback(
-        self, platform: str, async_add_entities: AddEntitiesCallback
-    ) -> None:
+    def register_platform_callback(self, platform: str, async_add_entities: AddEntitiesCallback) -> None:
         """Store the AddEntitiesCallback for a forwarded platform.
 
         Called once per platform from that platform's async_setup_entry.
@@ -159,15 +157,9 @@ class IntegrationManager:
         Includes even entities whose entity_id has not yet been assigned —
         so that the caller does NOT fall back to per-entity turn_off for
         those (we prefer an eventual retry over duplicate calls)."""
-        return {
-            domain
-            for (name, domain) in self._targets_group_entities.keys()
-            if name == group_name
-        }
+        return {domain for (name, domain) in self._targets_group_entities if name == group_name}
 
-    async def _sync_group_entities(
-        self, group_name: str, config_dict: dict, is_new: bool
-    ) -> None:
+    async def _sync_group_entities(self, group_name: str, config_dict: dict, is_new: bool) -> None:
         """Create/update/remove group entities to match config_dict.
 
         Safe to call whether or not the platform callbacks are registered —
@@ -201,9 +193,7 @@ class IntegrationManager:
         # not the AND-semantic UI groups they often pass through.
         expanded_targets = expand_group_targets(self.hass, list(config.targets))
         desired = split_targets_by_domain(expanded_targets)
-        current_domains = {
-            domain for (gname, domain) in self._targets_group_entities if gname == group_name
-        }
+        current_domains = {domain for (gname, domain) in self._targets_group_entities if gname == group_name}
         desired_domains = set(desired.keys())
 
         # Remove domains that are no longer present

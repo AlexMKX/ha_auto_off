@@ -11,9 +11,7 @@ from custom_components.auto_off.group_entities import (
 
 class TestSplitTargetsByDomain:
     def test_mixed_domains_are_bucketed(self):
-        result = split_targets_by_domain(
-            ["light.kitchen", "switch.fan", "light.hallway"]
-        )
+        result = split_targets_by_domain(["light.kitchen", "switch.fan", "light.hallway"])
         assert result == {
             "light": ["light.kitchen", "light.hallway"],
             "switch": ["switch.fan"],
@@ -33,13 +31,7 @@ class TestSplitTargetsByDomain:
 
 class TestEntityIdHelpers:
     def test_targets_group_entity_id(self):
-        assert (
-            targets_group_entity_id("light", "kitchen_auto_off")
-            == "light.auto_off_kitchen_auto_off_targets_light"
-        )
+        assert targets_group_entity_id("light", "kitchen_auto_off") == "light.auto_off_kitchen_auto_off_targets_light"
 
     def test_sensors_group_entity_id(self):
-        assert (
-            sensors_group_entity_id("kitchen_auto_off")
-            == "binary_sensor.auto_off_kitchen_auto_off_sensors"
-        )
+        assert sensors_group_entity_id("kitchen_auto_off") == "binary_sensor.auto_off_kitchen_auto_off_sensors"

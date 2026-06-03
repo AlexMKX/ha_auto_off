@@ -88,7 +88,7 @@ class TestDumpGroupRegistration:
         valid = SERVICE_DUMP_GROUP_SCHEMA({"group_name": "kitchen"})
         assert valid["group_name"] == "kitchen"
 
-        with pytest.raises(Exception):
+        with pytest.raises(Exception, match="."):  # voluptuous raises MultipleInvalid
             SERVICE_DUMP_GROUP_SCHEMA({})  # missing required
 
 
@@ -103,9 +103,7 @@ class TestDumpGroupBehavior:
         call.return_response = True
         return await entry.handler(call)
 
-    async def test_unknown_group_raises_service_validation_error(
-        self, hass_with_service
-    ):
+    async def test_unknown_group_raises_service_validation_error(self, hass_with_service):
         with pytest.raises(ServiceValidationError):
             await self._call(hass_with_service, "no_such_group")
 
@@ -141,9 +139,7 @@ class TestDumpGroupBehavior:
         assert validated["sensor_templates"] == []
         assert validated["delay"] == 5
 
-    async def test_data_includes_every_field_even_when_default(
-        self, hass_with_service
-    ):
+    async def test_data_includes_every_field_even_when_default(self, hass_with_service):
         """Even fields equal to their defaults are emitted, so the user can
         edit them without first remembering the defaults."""
         response = await self._call(hass_with_service, "kitchen_minimal")
@@ -168,6 +164,4 @@ class TestDumpGroupBehavior:
         assert "ensure_interval" not in data
         assert data["group_name"] == "office_full"
         assert data["delay"] == 15
-        assert data["sensor_templates"] == [
-            "{{ is_state('schedule.work', 'on') }}"
-        ]
+        assert data["sensor_templates"] == ["{{ is_state('schedule.work', 'on') }}"]

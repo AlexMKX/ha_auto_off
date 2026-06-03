@@ -22,14 +22,10 @@ clock.
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-from homeassistant.core import State
-
 from custom_components.auto_off.auto_off import GroupConfig, SensorGroup
-
 
 # Mark every coroutine test in the module so pytest-asyncio picks them up
 # without requiring a per-class decorator. The shared conftest already sets
@@ -87,7 +83,7 @@ def _replace_targets_with_stubs(group, target_states):
 def _stub_sensors(group, return_value):
     """Force ``all_sensors_off`` to return ``return_value`` (sync value or
     iterable for sequential calls)."""
-    if isinstance(return_value, (list, tuple)):
+    if isinstance(return_value, list | tuple):
         seq = list(return_value)
 
         async def _all_off():
@@ -106,9 +102,7 @@ class TestEnsureLoopHappyPath:
 
     async def test_no_retry_when_targets_off_on_first_check(self, hass):
         group = await _build_group(hass)
-        targets = _replace_targets_with_stubs(
-            group, {"light.kitchen": [False]}
-        )
+        targets = _replace_targets_with_stubs(group, {"light.kitchen": [False]})
         _stub_sensors(group, True)
 
         sleep_calls: list[float] = []
@@ -222,9 +216,7 @@ class TestEnsureLoopWindowExpires:
         async def _fast_sleep(delay):
             fake_time["now"] += delay
 
-        with patch("asyncio.sleep", _fast_sleep), patch(
-            "time.monotonic", _fake_monotonic
-        ):
+        with patch("asyncio.sleep", _fast_sleep), patch("time.monotonic", _fake_monotonic):
             await group._ensure_off_loop()
 
         # Window = 60s, interval = 10s → at most 6 passes that hit retry.
@@ -238,9 +230,7 @@ class TestEnsureLoopCancellation:
         """Arming a new deadline while the ensure loop is mid-flight
         must cancel the running task."""
         group = await _build_group(hass)
-        targets = _replace_targets_with_stubs(
-            group, {"light.kitchen": [True]}
-        )
+        targets = _replace_targets_with_stubs(group, {"light.kitchen": [True]})
         _stub_sensors(group, True)
 
         # Start the loop as a real task; wait until it's parked in sleep.
@@ -252,10 +242,8 @@ class TestEnsureLoopCancellation:
 
         # Simulate _start_deadline asking for cancellation.
         group._ensure_task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await group._ensure_task
-        except asyncio.CancelledError:
-            pass
 
         # The task is done; no further retries happened beyond what may
         # have already been issued before cancellation. Specifically,
@@ -350,15 +338,19 @@ class TestEnsureLoopIteratesSnapshot:
             if sleep_calls["n"] >= 2:
                 real_targets.clear()
 
-        with patch(
-            "custom_components.auto_off.auto_off.asyncio.sleep",
-            new=fake_sleep,
-        ), patch(
-            "custom_components.auto_off.auto_off.ENSURE_WINDOW_SEC",
-            ENSURE_WINDOW_SEC,
-        ), patch(
-            "custom_components.auto_off.auto_off.ENSURE_INTERVAL_SEC",
-            ENSURE_INTERVAL_SEC,
+        with (
+            patch(
+                "custom_components.auto_off.auto_off.asyncio.sleep",
+                new=fake_sleep,
+            ),
+            patch(
+                "custom_components.auto_off.auto_off.ENSURE_WINDOW_SEC",
+                ENSURE_WINDOW_SEC,
+            ),
+            patch(
+                "custom_components.auto_off.auto_off.ENSURE_INTERVAL_SEC",
+                ENSURE_INTERVAL_SEC,
+            ),
         ):
             await group._ensure_off_loop()
 
