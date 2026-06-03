@@ -39,6 +39,26 @@ def _missing_entity_log_level(hass: HomeAssistant) -> int:
     return logging.WARNING
 
 
+def _extract_member_list(state) -> list[str] | None:
+    """Normalise an HA ``state.attributes.entity_id`` into a member list.
+
+    Returns ``None`` when ``state`` is missing or its ``entity_id``
+    attribute is not a non-empty list. Non-string members are filtered.
+    """
+    if state is None:
+        return None
+    attributes = getattr(state, "attributes", None)
+    if not isinstance(attributes, dict):
+        return None
+    raw = attributes.get("entity_id")
+    if not isinstance(raw, list):
+        return None
+    members = [m for m in raw if isinstance(m, str)]
+    if not members:
+        return None
+    return members
+
+
 class GroupConfig(BaseModel):
     """Configuration for a single auto-off group.
 
