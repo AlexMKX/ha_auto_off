@@ -36,7 +36,7 @@ from custom_components.auto_off.auto_off import GroupConfig, SensorGroup
 # ``asyncio_mode = auto`` so this is belt-and-braces only.
 
 
-def _build_group(
+async def _build_group(
     hass,
     *,
     targets=("light.kitchen",),
@@ -56,6 +56,7 @@ def _build_group(
         delay=delay,
     )
     group = SensorGroup(hass, "g", config, manager=None)
+    await group._async_init_targets()
     return group
 
 
@@ -104,7 +105,7 @@ class TestEnsureLoopHappyPath:
     retrying."""
 
     async def test_no_retry_when_targets_off_on_first_check(self, hass):
-        group = _build_group(hass)
+        group = await _build_group(hass)
         targets = _replace_targets_with_stubs(
             group, {"light.kitchen": [False]}
         )
@@ -129,7 +130,7 @@ class TestEnsureLoopRetriesTarget:
     retry per-target until it goes off."""
 
     async def test_single_retry_then_off(self, hass):
-        group = _build_group(hass)
+        group = await _build_group(hass)
         targets = _replace_targets_with_stubs(
             group,
             # First check: on (needs retry). Second check: off.
@@ -152,7 +153,7 @@ class TestEnsureLoopRetriesTarget:
 
     async def test_retries_only_still_on_targets(self, hass):
         """A group with two targets retries only the one still on."""
-        group = _build_group(hass, targets=("light.a", "light.b"))
+        group = await _build_group(hass, targets=("light.a", "light.b"))
         targets = _replace_targets_with_stubs(
             group,
             {
@@ -177,7 +178,7 @@ class TestEnsureLoopAbortsOnSensorReclaim:
     retrying that pass."""
 
     async def test_abort_before_retry_when_sensors_back_on(self, hass):
-        group = _build_group(hass)
+        group = await _build_group(hass)
         targets = _replace_targets_with_stubs(
             group,
             # Stays on the entire time — would cause infinite retries
@@ -204,7 +205,7 @@ class TestEnsureLoopWindowExpires:
 
     async def test_six_retries_for_60s_window_10s_interval(self, hass):
         # Defaults are ENSURE_WINDOW_SEC=60 / ENSURE_INTERVAL_SEC=10.
-        group = _build_group(hass)
+        group = await _build_group(hass)
         targets = _replace_targets_with_stubs(
             group,
             # Always on; loop must keep retrying until the window is up.
@@ -236,7 +237,7 @@ class TestEnsureLoopCancellation:
     async def test_loop_task_cancelled_on_new_deadline(self, hass):
         """Arming a new deadline while the ensure loop is mid-flight
         must cancel the running task."""
-        group = _build_group(hass)
+        group = await _build_group(hass)
         targets = _replace_targets_with_stubs(
             group, {"light.kitchen": [True]}
         )
@@ -276,7 +277,7 @@ class TestEnsureLoopIntegration:
 
     async def test_turn_off_targets_runs_ensure_loop_inline(self, hass):
         hass.services.async_call = AsyncMock()
-        group = _build_group(hass)
+        group = await _build_group(hass)
         sentinel_ran = asyncio.Event()
 
         async def _sentinel():
@@ -307,7 +308,7 @@ class TestEnsureLoopIteratesSnapshot:
             ENSURE_WINDOW_SEC,
         )
 
-        group = _build_group(hass, targets=("light.a",))
+        group = await _build_group(hass, targets=("light.a",))
         _replace_targets_with_stubs(group, {"light.a": [True, False]})
 
         # Stub all_sensors_off so the loop runs at least one pass.

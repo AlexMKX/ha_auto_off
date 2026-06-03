@@ -453,6 +453,12 @@ class SensorGroup:
         # cancel the in-flight ensure-loop and push the remaining
         # leaves out by another full ``delay``.
         self._turn_off_lock = asyncio.Lock()
+        # Re-expand state. Roots are user-config targets; leaves are
+        # the expanded set tracked by self._targets. See
+        # docs/superpowers/specs/2026-06-03-target-reexpand-design.md
+        self._root_targets: list[str] = []
+        self._root_unsubs: list[Callable[[], None]] = []
+        self._current_leaves: list[str] = []
         self._init_from_config()
 
     def _init_from_config(self):
@@ -482,17 +488,64 @@ class SensorGroup:
                 asyncio.create_task(sensor_obj.start_tracking())
             except Exception as e:
                 _LOGGER.error(f"Sensor template '{template_str}' is invalid and will be ignored: {e}")
-        # Expand any group-like targets to their leaves before building
-        # Target objects. Auto_off must drive the actual end devices so
-        # the ensure-off retry loop can tell precisely which leaves did
-        # not switch off. The raw config (``self._config.targets``) is
-        # left untouched so ``dump_group`` reports the user's intent
-        # rather than the expanded form.
-        expanded_targets = expand_group_targets(self.hass, list(self._config.targets))
-        for target_def in expanded_targets:
-            target = Target(self.hass, target_def, self._on_target_state_change)
-            self._targets.append(target)
-            asyncio.create_task(target.start_tracking())
+        # Targets are built asynchronously so that we can subscribe to
+        # root entity state changes and react to membership updates at
+        # runtime. See _async_init_targets and the design spec.
+        asyncio.create_task(self._async_init_targets())
+
+    async def _async_init_targets(self) -> None:
+        """Initialise root subscriptions and the leaf target list.
+
+        Splits the original synchronous expansion path so that we can
+        ``await`` Target.start_tracking and serialise re-expansions
+        under ``self._lock``.
+        """
+        self._root_targets = list(self._config.targets)
+        await self._reexpand_targets(initial=True)
+
+    async def _reexpand_targets(self, *, initial: bool = False) -> None:
+        """Recompute leaves and diff against the current set.
+
+        See docs/superpowers/specs/2026-06-03-target-reexpand-design.md
+        for the protocol. Phase 1 (diff) runs under ``self._lock``;
+        phase 2 (deadline recheck) runs strictly after release to
+        avoid self-deadlock against ``check_and_set_deadline``.
+        """
+        async with self._lock:
+            new_leaves = expand_group_targets(self.hass, self._root_targets)
+            new_leaf_set = set(new_leaves)
+            current_leaf_set = set(self._current_leaves)
+            added = [eid for eid in new_leaves if eid not in current_leaf_set]
+            removed = [
+                eid for eid in self._current_leaves if eid not in new_leaf_set
+            ]
+
+            for entity_id in removed:
+                target = next(
+                    (t for t in self._targets if t.entity_id == entity_id),
+                    None,
+                )
+                if target is not None:
+                    await target.stop_tracking()
+                    self._targets.remove(target)
+
+            for entity_id in added:
+                target = Target(self.hass, entity_id, self._on_target_state_change)
+                self._targets.append(target)
+                await target.start_tracking()
+
+            self._current_leaves = new_leaves
+
+            if added or removed:
+                _LOGGER.info(
+                    "[Group %s] Target leaves changed: added=%s removed=%s",
+                    self.group_id,
+                    added,
+                    removed,
+                )
+
+        if not initial and (added or removed):
+            await self.check_and_set_deadline()
 
     async def all_sensors_off(self):
         sensors_on = []

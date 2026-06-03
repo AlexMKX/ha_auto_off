@@ -58,6 +58,7 @@ class TestTargetExpansionAtInit:
             delay=5,
         )
         group = SensorGroup(hass, "shower", config, manager=None)
+        await group._async_init_targets()
 
         target_eids = [t.entity_id for t in group._targets]
         assert target_eids == [
@@ -79,6 +80,7 @@ class TestTargetExpansionAtInit:
             delay=5,
         )
         group = SensorGroup(hass, "shower", config, manager=None)
+        await group._async_init_targets()
 
         assert group._config.targets == ["light.showerroom_all"]
 
@@ -92,6 +94,7 @@ class TestTargetExpansionAtInit:
             delay=5,
         )
         group = SensorGroup(hass, "k", config, manager=None)
+        await group._async_init_targets()
 
         target_eids = [t.entity_id for t in group._targets]
         assert target_eids == ["light.kitchen"]
@@ -110,6 +113,7 @@ class TestTargetExpansionAtInit:
             delay=5,
         )
         group = SensorGroup(hass, "g", config, manager=None)
+        await group._async_init_targets()
 
         target_eids = [t.entity_id for t in group._targets]
         assert target_eids == ["light.late"]

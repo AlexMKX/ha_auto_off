@@ -53,6 +53,7 @@ class TestTurnOffRoutingThroughGroups:
             delay=0,
         )
         group = SensorGroup(hass, "k", config, manager=manager)
+        await group._async_init_targets()
         group._ensure_off_loop = AsyncMock()
 
         # Replace Target.turn_off with a spy
