@@ -10,7 +10,7 @@ from homeassistant.helpers.event import (
     async_track_template,
 )
 from homeassistant.helpers.template import Template
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 # Local import to avoid a top-level cycle through __init__ → integration_manager.
 # group_entities only imports from .const, so this is safe.
@@ -72,13 +72,11 @@ class GroupConfig(BaseModel):
     sensor_templates: list[str] = []
     delay: int | str = 0
 
-    class Config:
-        """Reject unknown fields so a stale ``ensure_window`` /
-        ``ensure_interval`` in an old service payload surfaces as a
-        validation error rather than silently being stored on the
-        config entry."""
-
-        extra = "forbid"
+    # Reject unknown fields so a stale ``ensure_window`` /
+    # ``ensure_interval`` in an old service payload surfaces as a
+    # validation error rather than silently being stored on the
+    # config entry.
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("targets")
     @classmethod
@@ -497,16 +495,21 @@ class SensorGroup:
     async def _async_init_targets(self) -> None:
         """Initialise root subscriptions and the leaf target list.
 
-        Idempotent: the background task spawned by ``_init_from_config``
-        and an explicit call from tests or ``update_group_config`` must
-        produce the same final state regardless of ordering.  The first
-        call wins; subsequent calls are no-ops.
+        Invalid root entity_ids from config are filtered out of
+        ``self._root_targets`` after a one-time warning. ``GroupConfig``
+        keeps the raw list (validator only warns), so ``dump_group``
+        still reports user intent including typos; auto_off itself
+        operates on the validated subset only.
+
+        Idempotent: only the first call does real work; subsequent calls
+        are no-ops guarded by ``self._targets_initialised``.
         """
         if self._targets_initialised:
             return
         self._targets_initialised = True
-        self._root_targets = list(self._config.targets)
-        for root_id in self._root_targets:
+        all_roots = list(self._config.targets)
+        valid_roots: list[str] = []
+        for root_id in all_roots:
             if not valid_entity_id(root_id):
                 _LOGGER.warning(
                     "[Group %s] Skipping invalid root target %r",
@@ -514,8 +517,10 @@ class SensorGroup:
                     root_id,
                 )
                 continue
+            valid_roots.append(root_id)
             unsub = async_track_state_change_event(self.hass, [root_id], self._on_root_attributes_change)
             self._root_unsubs.append(unsub)
+        self._root_targets = valid_roots
         await self._reexpand_targets(initial=True)
 
     def _on_root_attributes_change(self, event) -> None:

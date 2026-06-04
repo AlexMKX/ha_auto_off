@@ -146,3 +146,72 @@ class TestExpandGroupTargets:
             "light.kitchen",
             "switch.coffee",
         ]
+
+
+class TestEmptyGroupSemantics:
+    """An entity with ``attributes.entity_id=[]`` is a group, not a leaf.
+
+    It contributes no leaves to the expansion.  An entity that has no
+    ``entity_id`` attribute at all is a leaf.  An entity absent from
+    hass.states is also a leaf (late-loaded).
+    """
+
+    def _hass_with_entity_id_attr(self, eid: str, attr_value) -> "MagicMock":
+        """Return a hass mock where ``eid`` has ``entity_id`` set to ``attr_value``."""
+        hass = MagicMock()
+        st = MagicMock()
+        st.attributes = {"entity_id": attr_value}
+
+        def _get(entity_id):
+            if entity_id == eid:
+                return st
+            return None
+
+        hass.states.get = MagicMock(side_effect=_get)
+        return hass
+
+    def _hass_no_entity_id_attr(self, eid: str) -> "MagicMock":
+        """Return a hass mock where ``eid`` has no ``entity_id`` attribute."""
+        hass = MagicMock()
+        st = MagicMock()
+        st.attributes = {}
+
+        def _get(entity_id):
+            if entity_id == eid:
+                return st
+            return None
+
+        hass.states.get = MagicMock(side_effect=_get)
+        return hass
+
+    def test_empty_member_list_yields_no_leaves(self):
+        """A root with ``attributes.entity_id=[]`` is an empty group;
+        the root itself must NOT appear in the result."""
+        hass = self._hass_with_entity_id_attr("light.group_empty", [])
+        result = expand_group_targets(hass, ["light.group_empty"])
+        assert result == [], f"expected no leaves for empty group, got {result!r}"
+
+    def test_non_empty_member_list_expands_to_leaves(self):
+        """A root with ``attributes.entity_id=["light.a"]`` expands to that leaf."""
+        hass = MagicMock()
+
+        def _get(eid):
+            if eid == "light.group":
+                st = MagicMock()
+                st.attributes = {"entity_id": ["light.a"]}
+                return st
+            if eid == "light.a":
+                st = MagicMock()
+                st.attributes = {}
+                return st
+            return None
+
+        hass.states.get = MagicMock(side_effect=_get)
+        result = expand_group_targets(hass, ["light.group"])
+        assert result == ["light.a"]
+
+    def test_entity_without_entity_id_attr_is_a_leaf(self):
+        """An entity whose state has no ``entity_id`` attribute is a leaf."""
+        hass = self._hass_no_entity_id_attr("light.real_bulb")
+        result = expand_group_targets(hass, ["light.real_bulb"])
+        assert result == ["light.real_bulb"]

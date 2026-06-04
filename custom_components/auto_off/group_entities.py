@@ -60,7 +60,7 @@ def _install_member_listener(entity) -> Callable[[], None] | None:
     return async_track_state_change_event(entity.hass, list(entity._entity_ids), _on_member_state_change)
 
 
-# Map HA domain -> HA stdlib *Group class.  Keep in sync with GROUPABLE_DOMAINS.
+# Map HA domain -> HA stdlib *Group class.
 # ValveGroup may be absent on older HA versions (<= 2025.1); filter None entries.
 _TARGET_GROUP_CLASSES: dict[str, type] = {
     k: v
@@ -229,16 +229,21 @@ TARGET_GROUP_ENTITY_CLASSES: dict[str, type] = {
     domain: _make_targets_group_class(domain, base) for domain, base in _TARGET_GROUP_CLASSES.items()
 }
 
+# Single source of truth: derived from the classes we actually built.
+# If ValveGroup is absent on an older HA version, "valve" is absent here too.
+GROUPABLE_DOMAINS: frozenset[str] = frozenset(TARGET_GROUP_ENTITY_CLASSES.keys())
+
 
 def expand_group_targets(hass, entity_ids: list[str]) -> list[str]:
     """Recursively expand any group-like targets to their leaves.
 
     A target is treated as a group when its current state in
-    ``hass.states`` exposes an ``entity_id`` attribute that is a list.
-    The list is then walked recursively until every produced id either
-    has no ``entity_id`` attribute (a real leaf) or is absent from
-    ``hass.states`` (late-loaded entity - kept as a leaf so auto_off
-    still drives it directly when it appears).
+    ``hass.states`` exposes an ``entity_id`` attribute that is a list
+    (even an empty one). An empty member list means the group has no
+    leaves — the group entity itself is **not** added as a self-leaf.
+    Entities absent from ``hass.states`` or lacking an ``entity_id``
+    attribute are treated as leaves (late-loaded entities kept for
+    direct turn-off when they appear).
 
     Results are de-duplicated while preserving first-seen order. Cycles
     are broken via a ``visited`` set, so ``light.a -> light.b ->
@@ -260,20 +265,27 @@ def expand_group_targets(hass, entity_ids: list[str]) -> list[str]:
         visited.add(eid)
 
         state = hass.states.get(eid)
-        children: list[str] | None = None
+        is_group = False
+        children: list[str] = []
         if state is not None:
             attr = getattr(state, "attributes", {}) or {}
             raw = attr.get("entity_id")
-            if isinstance(raw, list) and raw:
+            if isinstance(raw, list):
+                # State has an entity_id list attribute -> treat as group,
+                # even if the list is empty. An empty group has no leaves;
+                # it is NOT a self-leaf.
+                is_group = True
                 children = [c for c in raw if isinstance(c, str)]
 
-        if not children:
-            # Leaf (or late-loaded entity treated as a leaf).
+        if not is_group:
+            # Not a group (or late-loaded entity): treat as a leaf.
             if eid not in seen_set:
                 seen.append(eid)
                 seen_set.add(eid)
             return
 
+        # Group with possibly empty member list. Recurse into children;
+        # if children is empty, the group contributes no leaves.
         for child in children:
             _walk(child)
 

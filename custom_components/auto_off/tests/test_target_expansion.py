@@ -85,8 +85,26 @@ class TestTargetExpansionAtInit:
         assert group._config.targets == ["light.showerroom_all"]
 
     async def test_plain_leaf_target_unchanged(self):
-        """Non-group targets pass through unchanged."""
-        hass = _hass_with_group("light.kitchen", [])  # leaf
+        """Non-group targets pass through unchanged.
+
+        A leaf entity has no ``entity_id`` attribute. The helper
+        ``_hass_with_group("light.kitchen", [])`` would produce
+        ``attributes={"entity_id": []}`` which is now treated as an
+        *empty group* (F11 fix). We build a proper leaf state explicitly.
+        """
+        hass = MagicMock()
+        hass.loop = MagicMock()
+        hass.loop.time = MagicMock(return_value=1000.0)
+        hass.bus = MagicMock()
+
+        def _get(eid):
+            if eid == "light.kitchen":
+                st = MagicMock()
+                st.attributes = {}  # no entity_id attr -> leaf
+                return st
+            return None
+
+        hass.states.get = MagicMock(side_effect=_get)
         config = GroupConfig(
             targets=["light.kitchen"],
             sensors=["binary_sensor.motion"],
@@ -103,8 +121,10 @@ class TestTargetExpansionAtInit:
         """A target that doesn't exist in hass.states yet (late-loaded
         integration) stays as a single leaf - auto_off will drive it
         directly once it appears, no expansion possible until then."""
-        hass = _hass_with_group("light.late", [])
-        # remove "light.late" from states map entirely
+        hass = MagicMock()
+        hass.loop = MagicMock()
+        hass.loop.time = MagicMock(return_value=1000.0)
+        hass.bus = MagicMock()
         hass.states.get = MagicMock(return_value=None)
         config = GroupConfig(
             targets=["light.late"],
