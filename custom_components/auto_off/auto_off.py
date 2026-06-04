@@ -404,6 +404,7 @@ class SensorGroup:
         on_deadline_change: Callable[[str, str | None], None] | None = None,
         *,
         manager: "Any | None" = None,
+        poll_interval: int = 15,
     ):
         self.hass = hass
         self.group_id = group_id
@@ -414,6 +415,13 @@ class SensorGroup:
         self._targets: list[Target] = []
         self._timer: asyncio.TimerHandle | None = None
         self._timer_deadline: float | None = None  # timestamp when timer fires
+        # Patrol cadence (seconds). The inactivity-timer model requires
+        # delay > poll_interval; otherwise the deadline can fire between
+        # patrol ticks during presence. See the design spec.
+        self._poll_interval = poll_interval
+        # One-shot guard so the delay<=poll_interval warning is not
+        # repeated on every maybe_delay call (hot path).
+        self._delay_warning_emitted = False
         self._last_all_sensors_off: bool | None = None
         # Critical section for race condition protection
         self._lock = asyncio.Lock()
@@ -690,6 +698,53 @@ class SensorGroup:
         # Expired deadlines check will be in periodic worker
         if state["target_on"] and state["all_sensors_off"] and self._timer_deadline is None:
             self._track_background(self._set_deadline_from_delay("startup"))
+
+    def _warn_if_delay_too_short(self, delay_seconds: int) -> None:
+        """Warn once if the configured delay does not exceed poll_interval.
+
+        With delay <= poll_interval the inactivity timer can fire between
+        patrol ticks while presence is still on, flapping the targets off
+        mid-occupancy. The fix is operational (raise the delay), so this
+        is a warning, not an error.
+        """
+        if delay_seconds <= self._poll_interval and not self._delay_warning_emitted:
+            self._delay_warning_emitted = True
+            _LOGGER.warning(
+                "[Group %s] delay (%ds) <= poll_interval (%ds): the inactivity "
+                "timer may fire between patrol ticks during presence. Set the "
+                "group delay greater than poll_interval.",
+                self.group_id,
+                delay_seconds,
+                self._poll_interval,
+            )
+
+    async def maybe_delay(self, reason: str) -> None:
+        """Public extend-only deadline bump. Acquires the group lock."""
+        async with self._lock:
+            await self._maybe_delay_locked(reason)
+
+    async def _maybe_delay_locked(self, reason: str) -> None:
+        """Extend the deadline to now()+delay if later than the current one.
+
+        Extend-only: never shortens an existing deadline; creates one if
+        none exists. Caller must hold ``self._lock``.
+        """
+        delay = await self.get_delay()
+        self._warn_if_delay_too_short(delay)
+        now = self.hass.loop.time()
+        potential = now + delay
+        if self._timer_deadline is not None and potential <= self._timer_deadline:
+            return  # would not extend
+        self._start_deadline(force_deadline=potential)
+        now_real = datetime.datetime.now().astimezone()
+        human = (now_real + datetime.timedelta(seconds=delay)).isoformat()
+        _LOGGER.info(
+            "[Group %s] Deadline extended by %s: +%ds | deadline %s",
+            self.group_id,
+            reason,
+            delay,
+            human,
+        )
 
     async def _set_deadline_from_delay(self, reason: str):
         """Sets deadline based on delay from config"""
@@ -1058,11 +1113,13 @@ class AutoOffManager:
         *,
         on_deadline_change: Callable[[str, str | None], None] | None = None,
         integration_manager: "Any | None" = None,
+        poll_interval: int = 15,
     ) -> None:
         self.hass = hass
         self.config = config
         self._on_deadline_change = on_deadline_change
         self._integration_manager = integration_manager
+        self._poll_interval = poll_interval
         self._groups: dict[str, SensorGroup] = {}
         self._tasks: list[Any] = []
 
@@ -1083,6 +1140,7 @@ class AutoOffManager:
                     group_config,
                     on_deadline_change=self._on_deadline_change,
                     manager=self._integration_manager,
+                    poll_interval=self._poll_interval,
                 )
                 _LOGGER.info(
                     "Initialized auto-off group '%s' with %d sensors and %d targets",

@@ -57,11 +57,13 @@ class IntegrationManager:
         groups_data = entry.data.get(CONF_GROUPS, {})
         group_configs = parse_group_configs(groups_data)
 
+        poll_interval = entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
         self.auto_off = AutoOffManager(
             hass,
             group_configs,
             on_deadline_change=self._on_deadline_change,
             integration_manager=self,
+            poll_interval=poll_interval,
         )
         self._lock = asyncio.Lock()
         self._remove_listener = None
@@ -389,6 +391,7 @@ class IntegrationManager:
             self.auto_off.config[group_name],
             on_deadline_change=self.auto_off._on_deadline_change,
             manager=self,
+            poll_interval=self.auto_off._poll_interval,
         )
         self.auto_off._groups[group_name] = new_group
 
