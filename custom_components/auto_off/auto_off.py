@@ -39,25 +39,6 @@ def _missing_entity_log_level(hass: HomeAssistant) -> int:
     return logging.WARNING
 
 
-def _extract_member_list(state) -> list[str] | None:
-    """Normalise an HA ``state.attributes.entity_id`` into a member list.
-
-    Returns ``None`` when ``state`` is missing or its ``entity_id``
-    attribute is not a non-empty list. Non-string members are filtered.
-    """
-    if state is None:
-        return None
-    attributes = getattr(state, "attributes", None)
-    if not isinstance(attributes, dict):
-        return None
-    raw = attributes.get("entity_id")
-    if not isinstance(raw, list):
-        return None
-    members = [m for m in raw if isinstance(m, str)]
-    if not members:
-        return None
-    return members
-
 
 class GroupConfig(BaseModel):
     """Configuration for a single auto-off group.
@@ -455,7 +436,6 @@ class SensorGroup:
         # the expanded set tracked by self._targets. See
         # docs/superpowers/specs/2026-06-03-target-reexpand-design.md
         self._root_targets: list[str] = []
-        self._root_unsubs: list[Callable[[], None]] = []
         self._current_leaves: list[str] = []
         self._targets_initialised: bool = False
         # Strong references for background tasks spawned by this group.
@@ -463,9 +443,8 @@ class SensorGroup:
         # (the event loop holds only weak references). The set is also
         # used to cancel all in-flight work during async_unload.
         self._background_tasks: set[asyncio.Task] = set()
-        # Set to True at the start of async_unload so callbacks (e.g.
-        # _on_root_attributes_change) can short-circuit without
-        # spawning new re-expand tasks during shutdown.
+        # Set to True at the start of async_unload so any in-flight
+        # callback can short-circuit cleanly during shutdown.
         self._unloaded: bool = False
         self._init_from_config()
 
@@ -514,7 +493,7 @@ class SensorGroup:
         self._track_background(self._async_init_targets())
 
     async def _async_init_targets(self) -> None:
-        """Initialise root subscriptions and the leaf target list.
+        """Initialise the leaf target list.
 
         Invalid root entity_ids from config are filtered out of
         ``self._root_targets`` after a one-time warning. ``GroupConfig``
@@ -522,8 +501,9 @@ class SensorGroup:
         still reports user intent including typos; auto_off itself
         operates on the validated subset only.
 
-        Idempotent: only the first call does real work; subsequent calls
-        are no-ops guarded by ``self._targets_initialised``.
+        Membership changes on root group entities are detected by the
+        periodic patrol in ``AutoOffManager.periodic_worker``, which
+        calls ``_reexpand_targets()`` on every tick.
         """
         if self._targets_initialised:
             return
@@ -539,26 +519,8 @@ class SensorGroup:
                 )
                 continue
             valid_roots.append(root_id)
-            unsub = async_track_state_change_event(self.hass, [root_id], self._on_root_attributes_change)
-            self._root_unsubs.append(unsub)
         self._root_targets = valid_roots
         await self._reexpand_targets(initial=True)
-
-    def _on_root_attributes_change(self, event) -> None:
-        """HA state-change callback for a root target.
-
-        Compares old/new ``attributes.entity_id`` and triggers re-expand
-        only when membership actually changed. Spawns a task because
-        ``_reexpand_targets`` is async; the HA event bus does not wait
-        on us, which is exactly what we want for long expansions.
-        """
-        if self._unloaded:
-            return
-        old_members = _extract_member_list(event.data.get("old_state"))
-        new_members = _extract_member_list(event.data.get("new_state"))
-        if old_members == new_members:
-            return
-        self._track_background(self._reexpand_targets())
 
     async def _reexpand_targets(self, *, initial: bool = False) -> None:
         """Recompute leaves and diff against the current set.
@@ -1019,27 +981,11 @@ class SensorGroup:
 
     async def async_unload(self):
         """Cleans up group resources."""
-        # Set the unloaded flag early so any callback fired BEFORE the
-        # root subscriptions are released can short-circuit. This
-        # prevents post-unload state-change events from spawning new
-        # re-expand tasks that would race the rest of teardown.
+        # Set the unloaded flag early so any in-flight callback (e.g. a
+        # pending state-change reaction) can short-circuit cleanly.
         self._unloaded = True
 
         async with self._lock:
-            # Release root membership subscriptions before tearing down
-            # sensors/targets so a late root state-change event cannot
-            # spawn a re-expand task during shutdown.
-            for unsub in self._root_unsubs:
-                try:
-                    unsub()
-                except Exception as exc:  # noqa: BLE001
-                    _LOGGER.debug(
-                        "[Group %s] root unsub failed: %s",
-                        self.group_id,
-                        exc,
-                    )
-            self._root_unsubs.clear()
-
             # Cancel timer and any pending ensure-off loop.
             self._cancel_deadline()
 
@@ -1053,14 +999,12 @@ class SensorGroup:
 
             _LOGGER.info("[Group %s] Unloaded successfully", self.group_id)
 
-        # Cancel any background tasks still in flight (e.g. a re-expand
-        # task that was spawned just before the unloaded flag was set).
-        # Done OUTSIDE the lock so tasks that hold the lock can release
-        # it and observe the cancellation cleanly.
+        # Cancel any background tasks still in flight. Done OUTSIDE the
+        # lock so tasks holding the lock can release it and observe the
+        # cancellation cleanly.
         pending = [t for t in self._background_tasks if not t.done()]
         for task in pending:
             task.cancel()
-        # Wait for cancellations to settle. Suppress CancelledError per task.
         for task in pending:
             try:
                 await task
@@ -1072,6 +1016,18 @@ class SensorGroup:
                     self.group_id,
                     exc,
                 )
+
+    async def tick(self) -> None:
+        """Patrol tick: re-expand targets then evaluate the deadline.
+
+        Called by ``AutoOffManager.periodic_worker`` on every scheduler
+        interval. Re-expanding first ensures that runtime membership
+        changes on root group entities (added/removed leaves) are
+        detected within one poll interval before the deadline state
+        machine evaluates.
+        """
+        await self._reexpand_targets()
+        await self.check_and_set_deadline()
 
     async def _on_target_state_change(self, target: Target, old_state: bool | None, new_state: bool | None):
         """Handler for target state changes, passed to Target"""
@@ -1141,8 +1097,17 @@ class AutoOffManager:
         _LOGGER.debug("Periodic worker tick.")
         try:
             for group in self._groups.values():
-                # Check states and set deadlines
-                await group.check_and_set_deadline()
+                # Re-expand first so late-registered group helpers and
+                # runtime membership changes are picked up before the
+                # deadline state machine evaluates.
+                try:
+                    await group.tick()
+                except Exception as exc:  # noqa: BLE001
+                    _LOGGER.warning(
+                        "Group %s periodic tick failed: %s",
+                        group.group_id,
+                        exc,
+                    )
         except Exception as e:
             _LOGGER.error(f"Scheduled config reload failed: {e}")
 

@@ -1,56 +1,18 @@
 """Tests for dynamic target re-expansion.
 
 Behavior-only: tests exercise SensorGroup through its public surface
-(target turn_off calls, deadline notifications, root state-change
-events) and never assert on private fields, call counts of helpers,
-or list contents.
+(target turn_off calls, deadline notifications, patrol tick) and never
+assert on private fields, call counts of helpers, or list contents
+beyond what is needed to verify the observable membership change.
 
 Spec: docs/superpowers/specs/2026-06-03-target-reexpand-design.md
 """
 
 from __future__ import annotations
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
-from custom_components.auto_off.auto_off import GroupConfig, SensorGroup, _extract_member_list
-
-
-class TestExtractMemberList:
-    """_extract_member_list normalises HA state.attributes.entity_id.
-
-    Validates: the helper used to detect membership changes on root
-    targets returns None for anything that is not a non-empty list of
-    strings.
-    """
-
-    def test_returns_none_for_none_state(self):
-        assert _extract_member_list(None) is None
-
-    def test_returns_none_when_attributes_missing(self):
-        state = MagicMock(spec=[])
-        # No attributes attribute at all.
-        assert _extract_member_list(state) is None
-
-    def test_returns_none_when_entity_id_attr_not_a_list(self):
-        state = MagicMock()
-        state.attributes = {"entity_id": "light.kitchen"}
-        assert _extract_member_list(state) is None
-
-    def test_returns_none_for_empty_list(self):
-        state = MagicMock()
-        state.attributes = {"entity_id": []}
-        assert _extract_member_list(state) is None
-
-    def test_filters_non_string_members(self):
-        state = MagicMock()
-        state.attributes = {"entity_id": ["light.a", 42, None, "light.b"]}
-        assert _extract_member_list(state) == ["light.a", "light.b"]
-
-    def test_returns_list_of_strings(self):
-        state = MagicMock()
-        state.attributes = {"entity_id": ["light.a", "light.b"]}
-        assert _extract_member_list(state) == ["light.a", "light.b"]
+from custom_components.auto_off.auto_off import GroupConfig, SensorGroup
 
 
 def _hass_for_root(root_id, members, member_states=None):
@@ -84,141 +46,13 @@ def _hass_for_root(root_id, members, member_states=None):
     return hass
 
 
-class TestRootSubscription:
-    """Membership changes on root targets trigger re-expansion;
-    self-state changes (root flips on/off without member change) do not.
-    """
-
-    async def test_subscription_installed_for_each_root(self):
-        """Validates: each root entity_id from config gets exactly one
-        async_track_state_change_event subscription."""
-        hass = _hass_for_root("light.example_root", ["light.leaf_a"])
-        config = GroupConfig(
-            targets=["light.example_root"],
-            sensors=["binary_sensor.motion"],
-            sensor_templates=[],
-            delay=0,
-        )
-
-        tracked = []
-
-        def fake_track(hass_arg, entity_ids, callback):
-            tracked.append((list(entity_ids), callback))
-            return MagicMock(name="unsub")
-
-        with patch(
-            "custom_components.auto_off.auto_off.async_track_state_change_event",
-            side_effect=fake_track,
-        ):
-            group = SensorGroup(hass, "g", config, manager=None)
-            await group._async_init_targets()
-
-        root_subs = [t for t in tracked if "light.example_root" in t[0]]
-        assert len(root_subs) == 1
-
-    async def test_invalid_root_id_does_not_subscribe_or_crash(self, caplog):
-        """Validates: a config with an invalid root entity_id does not
-        crash setup, does not install a subscription, and emits a WARNING
-        log so the user sees the typo."""
-        import logging
-
-        hass = _hass_for_root("light.example_root", ["light.leaf_a"])
-        config = GroupConfig(
-            targets=["not_an_entity_id"],
-            sensors=["binary_sensor.motion"],
-            sensor_templates=[],
-            delay=0,
-        )
-
-        tracked = []
-
-        def fake_track(hass_arg, entity_ids, callback):
-            tracked.append(list(entity_ids))
-            return MagicMock(name="unsub")
-
-        caplog.set_level(logging.WARNING, logger="custom_components.auto_off.auto_off")
-
-        with patch(
-            "custom_components.auto_off.auto_off.async_track_state_change_event",
-            side_effect=fake_track,
-        ):
-            group = SensorGroup(hass, "g", config, manager=None)
-            await group._async_init_targets()
-
-        # No subscription installed for the invalid id.
-        assert all("not_an_entity_id" not in ids for ids in tracked), (
-            f"unexpected subscription installed for invalid root: {tracked!r}"
-        )
-
-        # No service call dispatched as a side effect of setup.
-        hass.services.async_call.assert_not_awaited()
-
-        # WARNING emitted naming the invalid target.
-        assert any(
-            "not_an_entity_id" in r.message
-            for r in caplog.records
-            if r.levelno == logging.WARNING
-        ), f"expected WARNING about invalid root, got {[r.message for r in caplog.records]!r}"
-
-    async def test_self_state_change_without_membership_diff_is_ignored(self):
-        """Validates: when the root flips on -> off but
-        attributes.entity_id is unchanged, no service call is dispatched
-        and no deadline recheck happens beyond the no-op transition."""
-        hass = _hass_for_root("light.example_root", ["light.leaf_a"])
-        config = GroupConfig(
-            targets=["light.example_root"],
-            sensors=["binary_sensor.motion"],
-            sensor_templates=[],
-            delay=0,
-        )
-
-        callback_box = {}
-
-        def fake_track(hass_arg, entity_ids, callback):
-            if "light.example_root" in entity_ids:
-                callback_box["cb"] = callback
-            return MagicMock(name="unsub")
-
-        with patch(
-            "custom_components.auto_off.auto_off.async_track_state_change_event",
-            side_effect=fake_track,
-        ):
-            group = SensorGroup(hass, "g", config, manager=None)
-            await group._async_init_targets()
-
-        # Spy on _reexpand_targets.
-        original_reexpand = group._reexpand_targets
-        calls = {"n": 0}
-
-        async def spy(*args, **kwargs):
-            calls["n"] += 1
-            await original_reexpand(*args, **kwargs)
-
-        group._reexpand_targets = spy
-
-        # Fire a self-state change: same members, different state.
-        old_state = MagicMock()
-        old_state.attributes = {"entity_id": ["light.leaf_a"]}
-        new_state = MagicMock()
-        new_state.attributes = {"entity_id": ["light.leaf_a"]}
-        event = MagicMock()
-        event.data = {"old_state": old_state, "new_state": new_state}
-
-        result = callback_box["cb"](event)
-        if asyncio.iscoroutine(result):
-            await result
-        await asyncio.sleep(0)  # let any spawned task run
-
-        assert calls["n"] == 0
-
-
 class TestReexpandDrivesDeadline:
     """Membership changes feed the existing deadline state machine.
 
     Validates: when a new on leaf appears, the deadline starts (provided
     sensors are off); when the only on leaf is removed, the deadline
-    cancels. The tests assert on the deadline-change callback the
-    integration manager registers, not on private SensorGroup fields.
+    cancels. Tests drive re-expansion directly via ``_reexpand_targets``
+    (simulating a patrol tick) instead of via subscription callbacks.
     """
 
     async def test_new_on_leaf_starts_deadline_when_sensors_off(self):
@@ -239,32 +73,20 @@ class TestReexpandDrivesDeadline:
         def on_deadline_change(group_id, deadline_iso):
             deadline_events.append((group_id, deadline_iso))
 
-        callback_box = {}
-
-        def fake_track(hass_arg, entity_ids, callback):
-            if "light.example_root" in entity_ids:
-                callback_box["cb"] = callback
-            return MagicMock(name="unsub")
-
-        with patch(
-            "custom_components.auto_off.auto_off.async_track_state_change_event",
-            side_effect=fake_track,
-        ):
-            group = SensorGroup(
-                hass,
-                "g",
-                config,
-                on_deadline_change=on_deadline_change,
-                manager=None,
-            )
-            await group._async_init_targets()
+        group = SensorGroup(
+            hass,
+            "g",
+            config,
+            on_deadline_change=on_deadline_change,
+            manager=None,
+        )
+        await group._async_init_targets()
 
         # Flush first-run init via a state collection pass.
         await group.check_and_set_deadline()
         deadline_events.clear()
 
-        # Update root state so expand_group_targets sees the new membership
-        # (pitfall 3: without this, expand returns the old list and no diff fires).
+        # Update root state so expand_group_targets sees the new membership.
         def get_with_new_leaf(eid):
             if eid == "light.example_root":
                 st = MagicMock()
@@ -285,28 +107,16 @@ class TestReexpandDrivesDeadline:
 
         hass.states.get.side_effect = get_with_new_leaf
 
-        old_state = MagicMock()
-        old_state.attributes = {"entity_id": ["light.leaf_a"]}
-        new_state = MagicMock()
-        new_state.attributes = {"entity_id": ["light.leaf_a", "light.leaf_b"]}
-        event = MagicMock()
-        event.data = {"old_state": old_state, "new_state": new_state}
-
         # Stub sensor as off so deadline can start.
         for s in group._sensors:
             s.is_on = AsyncMock(return_value=False)
 
-        result = callback_box["cb"](event)
-        if asyncio.iscoroutine(result):
-            await result
-        # Allow the spawned task to run.
-        for _ in range(5):
-            await asyncio.sleep(0)
+        # Simulate a patrol tick by calling _reexpand_targets directly.
+        await group._reexpand_targets()
+        # check_and_set_deadline is called by _reexpand_targets (non-initial, diff present).
 
         # delay=10 ensures the deadline persists long enough to observe
-        # the non-null deadline notification; without this the deadline
-        # would fire immediately (delay=0) and the resulting trace would
-        # be ambiguous with startup-induced service calls.
+        # the non-null deadline notification.
         non_null = [e for e in deadline_events if e[1] is not None]
         assert non_null, (
             f"expected a non-null deadline notification after re-expand, "
@@ -331,25 +141,14 @@ class TestReexpandDrivesDeadline:
         def on_deadline_change(group_id, deadline_iso):
             deadline_events.append((group_id, deadline_iso))
 
-        callback_box = {}
-
-        def fake_track(hass_arg, entity_ids, callback):
-            if "light.example_root" in entity_ids:
-                callback_box["cb"] = callback
-            return MagicMock(name="unsub")
-
-        with patch(
-            "custom_components.auto_off.auto_off.async_track_state_change_event",
-            side_effect=fake_track,
-        ):
-            group = SensorGroup(
-                hass,
-                "g",
-                config,
-                on_deadline_change=on_deadline_change,
-                manager=None,
-            )
-            await group._async_init_targets()
+        group = SensorGroup(
+            hass,
+            "g",
+            config,
+            on_deadline_change=on_deadline_change,
+            manager=None,
+        )
+        await group._async_init_targets()
 
         # Stub sensors as off so a deadline starts.
         for s in group._sensors:
@@ -358,14 +157,14 @@ class TestReexpandDrivesDeadline:
         # _handle_first_run spawns create_task(_set_deadline_from_delay);
         # flush several event-loop ticks so the task runs and calls
         # _notify_deadline_change.
+        import asyncio
+
         for _ in range(5):
             await asyncio.sleep(0)
         assert any(e[1] is not None for e in deadline_events), "precondition: a deadline must have been set"
         deadline_events.clear()
 
-        # Update root state so expand_group_targets returns empty (no leaves)
-        # and leaf_a is gone from the system (pitfall 1: empty list collapses
-        # root to a leaf; we make the root state "off" so any_target_on=False).
+        # Update root state so expand_group_targets returns empty (no leaves).
         def updated_get(eid):
             if eid == "light.example_root":
                 st = MagicMock()
@@ -379,19 +178,8 @@ class TestReexpandDrivesDeadline:
 
         hass.states.get.side_effect = updated_get
 
-        # Remove leaf_a entirely.
-        old_state = MagicMock()
-        old_state.attributes = {"entity_id": ["light.leaf_a"]}
-        new_state = MagicMock()
-        new_state.attributes = {"entity_id": []}
-        event = MagicMock()
-        event.data = {"old_state": old_state, "new_state": new_state}
-
-        result = callback_box["cb"](event)
-        if asyncio.iscoroutine(result):
-            await result
-        for _ in range(5):
-            await asyncio.sleep(0)
+        # Simulate a patrol tick.
+        await group._reexpand_targets()
 
         # After removing the only on leaf, the deadline must be
         # cancelled (callback fired with None).
@@ -401,13 +189,12 @@ class TestReexpandDrivesDeadline:
 
 
 class TestUnload:
-    """async_unload must release root subscriptions.
+    """async_unload must clean up resources without raising."""
 
-    Validates: after unload, an event delivered to the captured root
-    callback must not produce any service call or deadline notification.
-    """
-
-    async def test_unload_silences_root_callback(self):
+    async def test_unload_completes_cleanly(self):
+        """Validates: async_unload sets the unloaded flag, releases
+        the deadline timer, and cancels any in-flight background
+        tasks without raising."""
         hass = _hass_for_root("light.example_root", ["light.leaf_a"])
         config = GroupConfig(
             targets=["light.example_root"],
@@ -415,139 +202,92 @@ class TestUnload:
             sensor_templates=[],
             delay=0,
         )
+        group = SensorGroup(hass, "g", config, manager=None)
+        await group._async_init_targets()
 
-        deadline_events: list[tuple[str, str | None]] = []
-
-        def on_deadline_change(group_id, deadline_iso):
-            deadline_events.append((group_id, deadline_iso))
-
-        unsubs_called: list[str] = []
-        callback_box: dict = {}
-
-        def make_unsub(label):
-            def _unsub():
-                unsubs_called.append(label)
-            return _unsub
-
-        sub_counter = {"n": 0}
-
-        def fake_track(hass_arg, entity_ids, callback):
-            sub_counter["n"] += 1
-            if "light.example_root" in entity_ids:
-                callback_box["cb"] = callback
-            return make_unsub(f"sub-{sub_counter['n']}")
-
-        with patch(
-            "custom_components.auto_off.auto_off.async_track_state_change_event",
-            side_effect=fake_track,
-        ):
-            group = SensorGroup(
-                hass, "g", config,
-                on_deadline_change=on_deadline_change,
-                manager=None,
-            )
-            await group._async_init_targets()
-
-        deadline_events.clear()
+        # Unload must run without raising.
         await group.async_unload()
+        assert group._unloaded is True
 
-        # 1. Root subscription unsub was invoked.
-        assert "sub-1" in unsubs_called, (
-            f"root unsub was not called; got {unsubs_called!r}"
-        )
 
-        # 2. Post-unload, firing the captured callback must not produce
-        #    side effects: no new deadline notifications, no service calls.
-        cb = callback_box.get("cb")
-        assert cb is not None, "fake_track did not capture the root callback"
+class TestPatrolDrivesReexpand:
+    """Periodic patrol re-expands and re-evaluates each group.
 
-        deadline_events.clear()
-        prior_service_calls = hass.services.async_call.await_count
+    Validates: AutoOffManager.periodic_worker calls _reexpand_targets()
+    for every group, picking up runtime membership changes without
+    requiring any subscription on root entities.
+    """
 
-        old_state = MagicMock()
-        old_state.attributes = {"entity_id": ["light.leaf_a"]}
-        new_state = MagicMock()
-        new_state.attributes = {"entity_id": ["light.leaf_a", "light.leaf_b"]}
-        event = MagicMock()
-        event.data = {"old_state": old_state, "new_state": new_state}
+    async def test_periodic_worker_reexpands_each_group(self):
+        from custom_components.auto_off.auto_off import AutoOffManager
 
-        import asyncio as _asyncio
-        result = cb(event)
-        if _asyncio.iscoroutine(result):
-            await result
-        for _ in range(5):
-            await _asyncio.sleep(0)
-
-        assert deadline_events == [], (
-            f"deadline notifications fired after unload: {deadline_events!r}"
-        )
-        assert hass.services.async_call.await_count == prior_service_calls, (
-            "service calls dispatched after unload"
-        )
-
-    async def test_unload_cancels_in_flight_reexpand_task(self):
-        """Validates: if a re-expand task is spawned via the captured
-        callback and unload happens immediately after, the task is
-        cancelled (no service calls or deadline notifications fire
-        from the cancelled task)."""
         hass = _hass_for_root("light.example_root", ["light.leaf_a"])
         config = GroupConfig(
             targets=["light.example_root"],
             sensors=["binary_sensor.motion"],
             sensor_templates=[],
-            delay=10,
+            delay=0,
+        )
+        manager = AutoOffManager(hass, {"g": config})
+        await manager.async_init_groups()
+
+        group = manager._groups["g"]
+        # Ensure init has completed.
+        await group._async_init_targets()
+        initial_leaves = list(group._current_leaves)
+
+        # Mutate hass to add leaf_b to the root membership.
+        def get_with_new_leaf(eid):
+            if eid == "light.example_root":
+                st = MagicMock()
+                st.attributes = {"entity_id": ["light.leaf_a", "light.leaf_b"]}
+                st.state = "on"
+                return st
+            if eid == "light.leaf_b":
+                st = MagicMock()
+                st.attributes = {}
+                st.state = "off"
+                return st
+            # fall back to original mock
+            return hass.states.get._original_side_effect(eid)
+
+        hass.states.get._original_side_effect = hass.states.get.side_effect
+        hass.states.get.side_effect = get_with_new_leaf
+
+        # One patrol tick.
+        await manager.periodic_worker()
+
+        # New leaf is now tracked.
+        assert "light.leaf_b" in group._current_leaves, (
+            f"expected leaf_b after patrol, got {group._current_leaves!r}"
+        )
+        assert "light.leaf_a" in group._current_leaves
+
+    async def test_invalid_root_id_does_not_crash_and_warns(self, caplog):
+        """Validates: a config with an invalid root entity_id does not
+        crash setup, does not install any tracking, and emits a WARNING
+        log so the user sees the typo."""
+        import logging
+
+        hass = _hass_for_root("light.example_root", ["light.leaf_a"])
+        config = GroupConfig(
+            targets=["not_an_entity_id"],
+            sensors=["binary_sensor.motion"],
+            sensor_templates=[],
+            delay=0,
         )
 
-        deadline_events: list[tuple[str, str | None]] = []
+        caplog.set_level(logging.WARNING, logger="custom_components.auto_off.auto_off")
 
-        def on_deadline_change(group_id, deadline_iso):
-            deadline_events.append((group_id, deadline_iso))
+        group = SensorGroup(hass, "g", config, manager=None)
+        await group._async_init_targets()
 
-        callback_box: dict = {}
+        # No service call dispatched as a side effect of setup.
+        hass.services.async_call.assert_not_awaited()
 
-        def fake_track(hass_arg, entity_ids, callback):
-            if "light.example_root" in entity_ids:
-                callback_box["cb"] = callback
-            return MagicMock(name="unsub")
-
-        with patch(
-            "custom_components.auto_off.auto_off.async_track_state_change_event",
-            side_effect=fake_track,
-        ):
-            group = SensorGroup(
-                hass, "g", config,
-                on_deadline_change=on_deadline_change,
-                manager=None,
-            )
-            await group._async_init_targets()
-
-        cb = callback_box.get("cb")
-        assert cb is not None
-
-        prior_service_calls = hass.services.async_call.await_count
-
-        # Fire a callback that WOULD spawn a re-expand task.
-        old_state = MagicMock()
-        old_state.attributes = {"entity_id": ["light.leaf_a"]}
-        new_state = MagicMock()
-        new_state.attributes = {"entity_id": ["light.leaf_a", "light.leaf_b"]}
-        event = MagicMock()
-        event.data = {"old_state": old_state, "new_state": new_state}
-
-        result = cb(event)
-        if asyncio.iscoroutine(result):
-            await result
-        # Do NOT let the spawned task run yet; immediately unload.
-        await group.async_unload()
-
-        # No service calls must come from the cancelled (or skipped) re-expand task.
-        assert hass.services.async_call.await_count == prior_service_calls
-
-        # Snapshot deadline_events and verify no new ones appear after
-        # letting any pending tasks settle.
-        snapshot = list(deadline_events)
-        for _ in range(5):
-            await asyncio.sleep(0)
-        assert deadline_events == snapshot, (
-            f"deadline_events changed post-unload: {deadline_events!r} vs {snapshot!r}"
-        )
+        # WARNING emitted naming the invalid target.
+        assert any(
+            "not_an_entity_id" in r.message
+            for r in caplog.records
+            if r.levelno == logging.WARNING
+        ), f"expected WARNING about invalid root, got {[r.message for r in caplog.records]!r}"
