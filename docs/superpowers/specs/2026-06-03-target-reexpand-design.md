@@ -264,3 +264,17 @@ E2E test in `test_integration_e2e.py`:
   startup after deploy: the root subscription catches the moment the helper
   registers, the re-expand populates the leaves, and individual member state
   changes drive the deadline.
+
+## Update 2026-06-04: switched to patrol
+
+The `async_track_state_change_event` subscription on root targets was removed.
+Production deployment revealed that this subscription does not reliably deliver
+state-changed events for late-registered entities, depending on HA version and
+startup timing. The subscription path also introduced a fire-and-forget task
+during shutdown, the `_unloaded` short-circuit, and three test classes around
+callback edge cases.
+
+Re-expansion now happens on every `periodic_worker` tick via
+`SensorGroup.tick()`. Membership changes are detected within `poll_interval`
+seconds (default 60 s). This is an acceptable latency for a rare operation
+(group membership edits), and the simpler code path is easier to reason about.

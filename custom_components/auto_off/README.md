@@ -73,14 +73,14 @@ operates on the actual end devices so:
 - The ensure-off retry loop can tell which specific leaves failed to
   switch off.
 - Editing the root group's membership at runtime (UI edit, helper group
-  member changes) is picked up: Auto Off re-expands and re-subscribes
-  without a config-entry reload.
+  member changes) is picked up without a config-entry reload. Detected
+  on the next periodic worker tick (default poll_interval=60s).
 
 Limitation: only the root targets listed in the group config are watched
 for membership changes. If a nested group inside a root changes its
-members, that change is not picked up until the root entity re-emits a
-state change. Reload the auto_off config entry (or restart HA) to force
-a full re-expansion.
+members, that change is not picked up until the next periodic tick.
+Reload the auto_off config entry (or restart HA) to force an immediate
+re-expansion.
 
 ### `auto_off.delete_group`
 
