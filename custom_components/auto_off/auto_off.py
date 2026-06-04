@@ -458,7 +458,28 @@ class SensorGroup:
         self._root_unsubs: list[Callable[[], None]] = []
         self._current_leaves: list[str] = []
         self._targets_initialised: bool = False
+        # Strong references for background tasks spawned by this group.
+        # Without these, Python's GC may collect tasks before they run
+        # (the event loop holds only weak references). The set is also
+        # used to cancel all in-flight work during async_unload.
+        self._background_tasks: set[asyncio.Task] = set()
+        # Set to True at the start of async_unload so callbacks (e.g.
+        # _on_root_attributes_change) can short-circuit without
+        # spawning new re-expand tasks during shutdown.
+        self._unloaded: bool = False
         self._init_from_config()
+
+    def _track_background(self, coro) -> asyncio.Task:
+        """Schedule a coroutine as a background task with a strong reference.
+
+        Without holding a strong reference the event loop may garbage-
+        collect the task before it completes. The reference is removed
+        when the task finishes (success, failure, or cancellation).
+        """
+        task = asyncio.create_task(coro)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+        return task
 
     def _init_from_config(self):
         self._sensors = []
@@ -472,7 +493,7 @@ class SensorGroup:
                     on_state_change_callback=self._on_sensor_state_change,
                 )
                 self._sensors.append(sensor_obj)
-                asyncio.create_task(sensor_obj.start_tracking())
+                self._track_background(sensor_obj.start_tracking())
             except Exception as e:
                 _LOGGER.error(f"Sensor entity '{sensor_id}' is invalid and will be ignored: {e}")
         for template_str in self._config.sensor_templates:
@@ -484,13 +505,13 @@ class SensorGroup:
                     on_state_change_callback=self._on_sensor_state_change,
                 )
                 self._sensors.append(sensor_obj)
-                asyncio.create_task(sensor_obj.start_tracking())
+                self._track_background(sensor_obj.start_tracking())
             except Exception as e:
                 _LOGGER.error(f"Sensor template '{template_str}' is invalid and will be ignored: {e}")
         # Targets are built asynchronously so that we can subscribe to
         # root entity state changes and react to membership updates at
         # runtime. See _async_init_targets and the design spec.
-        asyncio.create_task(self._async_init_targets())
+        self._track_background(self._async_init_targets())
 
     async def _async_init_targets(self) -> None:
         """Initialise root subscriptions and the leaf target list.
@@ -531,11 +552,13 @@ class SensorGroup:
         ``_reexpand_targets`` is async; the HA event bus does not wait
         on us, which is exactly what we want for long expansions.
         """
+        if self._unloaded:
+            return
         old_members = _extract_member_list(event.data.get("old_state"))
         new_members = _extract_member_list(event.data.get("new_state"))
         if old_members == new_members:
             return
-        asyncio.create_task(self._reexpand_targets())
+        self._track_background(self._reexpand_targets())
 
     async def _reexpand_targets(self, *, initial: bool = False) -> None:
         """Recompute leaves and diff against the current set.
@@ -704,7 +727,7 @@ class SensorGroup:
         # At startup just set deadline if needed
         # Expired deadlines check will be in periodic worker
         if state["target_on"] and state["all_sensors_off"] and self._timer_deadline is None:
-            asyncio.create_task(self._set_deadline_from_delay("startup"))
+            self._track_background(self._set_deadline_from_delay("startup"))
 
     async def _set_deadline_from_delay(self, reason: str):
         """Sets deadline based on delay from config"""
@@ -797,11 +820,11 @@ class SensorGroup:
             now = loop.time()
             delay = max(0, force_deadline - now)
         if delay > 0:
-            self._timer = loop.call_later(delay, lambda: asyncio.create_task(self._turn_off_targets()))
+            self._timer = loop.call_later(delay, lambda: self._track_background(self._turn_off_targets()))
             self._timer_deadline = loop.time() + delay
             _LOGGER.info(f"[{self.group_id}] All sensors are off/false. Deadline delay started.")
         else:
-            asyncio.create_task(self._turn_off_targets())
+            self._track_background(self._turn_off_targets())
             self._timer_deadline = None
             _LOGGER.info(f"[{self.group_id}] All sensors are off/false. Turning off targets immediately.")
 
@@ -995,7 +1018,13 @@ class SensorGroup:
         )
 
     async def async_unload(self):
-        """Cleans up group resources"""
+        """Cleans up group resources."""
+        # Set the unloaded flag early so any callback fired BEFORE the
+        # root subscriptions are released can short-circuit. This
+        # prevents post-unload state-change events from spawning new
+        # re-expand tasks that would race the rest of teardown.
+        self._unloaded = True
+
         async with self._lock:
             # Release root membership subscriptions before tearing down
             # sensors/targets so a late root state-change event cannot
@@ -1011,7 +1040,7 @@ class SensorGroup:
                     )
             self._root_unsubs.clear()
 
-            # Cancel timer
+            # Cancel timer and any pending ensure-off loop.
             self._cancel_deadline()
 
             # Sensors unsubscribe from their own events
@@ -1022,7 +1051,27 @@ class SensorGroup:
             for target in self._targets:
                 await target.stop_tracking()
 
-            _LOGGER.info(f"[Group {self.group_id}] Unloaded successfully")
+            _LOGGER.info("[Group %s] Unloaded successfully", self.group_id)
+
+        # Cancel any background tasks still in flight (e.g. a re-expand
+        # task that was spawned just before the unloaded flag was set).
+        # Done OUTSIDE the lock so tasks that hold the lock can release
+        # it and observe the cancellation cleanly.
+        pending = [t for t in self._background_tasks if not t.done()]
+        for task in pending:
+            task.cancel()
+        # Wait for cancellations to settle. Suppress CancelledError per task.
+        for task in pending:
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:  # noqa: BLE001
+                _LOGGER.debug(
+                    "[Group %s] background task error during unload: %s",
+                    self.group_id,
+                    exc,
+                )
 
     async def _on_target_state_change(self, target: Target, old_state: bool | None, new_state: bool | None):
         """Handler for target state changes, passed to Target"""

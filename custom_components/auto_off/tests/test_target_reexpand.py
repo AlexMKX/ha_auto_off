@@ -484,3 +484,70 @@ class TestUnload:
         assert hass.services.async_call.await_count == prior_service_calls, (
             "service calls dispatched after unload"
         )
+
+    async def test_unload_cancels_in_flight_reexpand_task(self):
+        """Validates: if a re-expand task is spawned via the captured
+        callback and unload happens immediately after, the task is
+        cancelled (no service calls or deadline notifications fire
+        from the cancelled task)."""
+        hass = _hass_for_root("light.example_root", ["light.leaf_a"])
+        config = GroupConfig(
+            targets=["light.example_root"],
+            sensors=["binary_sensor.motion"],
+            sensor_templates=[],
+            delay=10,
+        )
+
+        deadline_events: list[tuple[str, str | None]] = []
+
+        def on_deadline_change(group_id, deadline_iso):
+            deadline_events.append((group_id, deadline_iso))
+
+        callback_box: dict = {}
+
+        def fake_track(hass_arg, entity_ids, callback):
+            if "light.example_root" in entity_ids:
+                callback_box["cb"] = callback
+            return MagicMock(name="unsub")
+
+        with patch(
+            "custom_components.auto_off.auto_off.async_track_state_change_event",
+            side_effect=fake_track,
+        ):
+            group = SensorGroup(
+                hass, "g", config,
+                on_deadline_change=on_deadline_change,
+                manager=None,
+            )
+            await group._async_init_targets()
+
+        cb = callback_box.get("cb")
+        assert cb is not None
+
+        prior_service_calls = hass.services.async_call.await_count
+
+        # Fire a callback that WOULD spawn a re-expand task.
+        old_state = MagicMock()
+        old_state.attributes = {"entity_id": ["light.leaf_a"]}
+        new_state = MagicMock()
+        new_state.attributes = {"entity_id": ["light.leaf_a", "light.leaf_b"]}
+        event = MagicMock()
+        event.data = {"old_state": old_state, "new_state": new_state}
+
+        result = cb(event)
+        if asyncio.iscoroutine(result):
+            await result
+        # Do NOT let the spawned task run yet; immediately unload.
+        await group.async_unload()
+
+        # No service calls must come from the cancelled (or skipped) re-expand task.
+        assert hass.services.async_call.await_count == prior_service_calls
+
+        # Snapshot deadline_events and verify no new ones appear after
+        # letting any pending tasks settle.
+        snapshot = list(deadline_events)
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert deadline_events == snapshot, (
+            f"deadline_events changed post-unload: {deadline_events!r} vs {snapshot!r}"
+        )
