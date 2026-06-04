@@ -214,3 +214,17 @@ class TestInactivityModel:
         states["light.b"] = "on"
         await group._on_target_state_change(MagicMock(), False, True)
         assert group._timer_deadline == pytest.approx(1800.0)
+
+
+class TestFireTimePresenceRecheck:
+    """If presence is on at the moment the timer fires, abort turn-off."""
+
+    async def test_presence_on_at_fire_aborts_turn_off(self):
+        hass = _hass_with_states(target_on=True, presence_on=True, clock=1000.0)
+        group = _group(hass, delay=10, poll_interval=15)
+        await group._async_init_targets()
+        # Directly invoke the turn-off phase as the timer would.
+        await group._turn_off_targets()
+        # Presence is on -> no turn-off dispatched, deadline re-extended.
+        assert hass.services.async_call.await_count == 0
+        assert group._timer_deadline == pytest.approx(1600.0)

@@ -784,6 +784,17 @@ class SensorGroup:
             self._timer_deadline = None
             self._notify_deadline_change()
 
+            # Fire-time safety: presence may have returned between the last
+            # patrol extend and this firing. If so, abort and re-extend.
+            if not await self.all_sensors_off():
+                async with self._lock:
+                    await self._maybe_delay_locked("presence at fire time")
+                _LOGGER.info(
+                    "[Group %s] Turn-off aborted: presence on at fire time",
+                    self.group_id,
+                )
+                return
+
             # Primary path: one <domain>.turn_off call per live group
             # entity. We dispatch to the REAL entity_id HA assigned
             # (may differ from our ``targets_group_entity_id()``
