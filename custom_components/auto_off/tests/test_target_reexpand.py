@@ -290,3 +290,178 @@ class TestPatrolDrivesReexpand:
             for r in caplog.records
             if r.levelno == logging.WARNING
         ), f"expected WARNING about invalid root, got {[r.message for r in caplog.records]!r}"
+
+
+class TestReexpandDeadlineSignal:
+    """Re-expansion only treats an added leaf as activity if it is ON.
+
+    An added OFF leaf must not push an existing deadline forward, because
+    no actual activity occurred. An added ON leaf (late-bind, presence off)
+    must arm a deadline so the light eventually turns off.
+    """
+
+    async def test_added_off_leaf_does_not_extend_deadline(self):
+        """Re-expansion adding an OFF leaf must not move an existing deadline.
+
+        Scenario: leaf_a ON, sensor OFF, deadline at T+600 (delay=10 min).
+        Re-expansion adds leaf_b (OFF). The deadline must remain unchanged.
+        """
+        import asyncio
+
+        hass = _hass_for_root(
+            "light.example_root",
+            ["light.leaf_a"],
+            member_states={"light.leaf_a": "on"},
+        )
+        config = GroupConfig(
+            targets=["light.example_root"],
+            sensors=["binary_sensor.motion"],
+            sensor_templates=[],
+            delay=10,  # 10 minutes
+        )
+
+        deadline_events: list[tuple[str, str | None]] = []
+
+        def on_deadline_change(group_id, deadline_iso):
+            deadline_events.append((group_id, deadline_iso))
+
+        group = SensorGroup(
+            hass,
+            "g",
+            config,
+            on_deadline_change=on_deadline_change,
+            manager=None,
+        )
+        await group._async_init_targets()
+
+        # Stub sensor as off so the deadline can start.
+        for s in group._sensors:
+            s.is_on = AsyncMock(return_value=False)
+
+        # Seed an initial deadline (first-run baseline: leaf_a is on, sensor off).
+        await group.check_and_set_deadline()
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+        # Precondition: a non-null deadline must have been set.
+        assert any(e[1] is not None for e in deadline_events), (
+            f"precondition: expected a deadline to be set, got {deadline_events!r}"
+        )
+
+        # Record the deadline position before re-expansion.
+        deadline_before = group._timer_deadline
+        assert deadline_before is not None, "precondition: _timer_deadline must be set"
+        deadline_events.clear()
+
+        # Advance the mock clock so now() > deadline_before - delay,
+        # i.e. a new maybe_delay WOULD extend the deadline if called.
+        # We bump the clock by 300 s (half the 600 s delay) so that
+        # now + delay = T + 300 + 600 = T + 900 > deadline_before.
+        hass.loop.time = MagicMock(return_value=1300.0)  # was 1000.0 at baseline
+
+        # Mutate hass: root now expands to [leaf_a (ON), leaf_b (OFF)].
+        def get_with_new_off_leaf(eid):
+            if eid == "light.example_root":
+                st = MagicMock()
+                st.attributes = {"entity_id": ["light.leaf_a", "light.leaf_b"]}
+                st.state = "on"
+                return st
+            if eid == "light.leaf_a":
+                st = MagicMock()
+                st.attributes = {}
+                st.state = "on"
+                return st
+            if eid == "light.leaf_b":
+                st = MagicMock()
+                st.attributes = {}
+                st.state = "off"
+                return st
+            return None
+
+        hass.states.get.side_effect = get_with_new_off_leaf
+
+        # Simulate patrol tick via _reexpand_targets.
+        await group._reexpand_targets()
+
+        # Assert: the deadline must NOT have moved (no extend notification).
+        # An extend would set a deadline further in the future than deadline_before.
+        # We detect this by checking that no notification with a NEW (later) deadline
+        # was fired and that _timer_deadline is still the same value.
+        assert group._timer_deadline == deadline_before, (
+            f"deadline extended wrongly: was {deadline_before}, now {group._timer_deadline}. "
+            f"An added OFF leaf must not extend the deadline."
+        )
+
+    async def test_added_on_leaf_arms_deadline_when_no_prior_deadline(self):
+        """Re-expansion adding an ON leaf must arm a deadline even when sensor is off.
+
+        Scenario: no targets initially (root empty), sensor OFF.
+        Re-expansion adds leaf_a (ON). A deadline must be set.
+        """
+        import asyncio
+
+        # Start with an empty root.
+        hass = _hass_for_root(
+            "light.example_root",
+            [],
+            member_states={},
+        )
+        config = GroupConfig(
+            targets=["light.example_root"],
+            sensors=["binary_sensor.motion"],
+            sensor_templates=[],
+            delay=10,
+        )
+
+        deadline_events: list[tuple[str, str | None]] = []
+
+        def on_deadline_change(group_id, deadline_iso):
+            deadline_events.append((group_id, deadline_iso))
+
+        group = SensorGroup(
+            hass,
+            "g",
+            config,
+            on_deadline_change=on_deadline_change,
+            manager=None,
+        )
+        await group._async_init_targets()
+
+        # Stub sensor as off.
+        for s in group._sensors:
+            s.is_on = AsyncMock(return_value=False)
+
+        # Flush first-run with no targets on — no deadline expected.
+        await group.check_and_set_deadline()
+        for _ in range(5):
+            await asyncio.sleep(0)
+        deadline_events.clear()
+        assert group._timer_deadline is None, (
+            "precondition: no deadline when no targets are on"
+        )
+
+        # Mutate hass: root now expands to [leaf_a (ON)].
+        def get_with_on_leaf(eid):
+            if eid == "light.example_root":
+                st = MagicMock()
+                st.attributes = {"entity_id": ["light.leaf_a"]}
+                st.state = "on"
+                return st
+            if eid == "light.leaf_a":
+                st = MagicMock()
+                st.attributes = {}
+                st.state = "on"
+                return st
+            return None
+
+        hass.states.get.side_effect = get_with_on_leaf
+
+        await group._reexpand_targets()
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+        # Assert: a non-null deadline must have been set.
+        assert any(e[1] is not None for e in deadline_events), (
+            f"expected a deadline to be armed when an ON leaf was added, "
+            f"got {deadline_events!r}"
+        )

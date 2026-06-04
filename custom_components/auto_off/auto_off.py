@@ -570,8 +570,19 @@ class SensorGroup:
                 )
 
         if not initial and (added or removed):
-            # Newly added leaves that are on count as activity (target turned on).
-            await self.check_and_set_deadline(target_just_turned_on=bool(added))
+            # A newly-added leaf that is already on counts as activity
+            # (a light appeared on); an added OFF leaf must not extend the
+            # deadline. Compute the precise signal instead of bool(added).
+            added_on = False
+            for entity_id in added:
+                target = next(
+                    (t for t in self._targets if t.entity_id == entity_id),
+                    None,
+                )
+                if target is not None and await target.is_on():
+                    added_on = True
+                    break
+            await self.check_and_set_deadline(target_just_turned_on=added_on)
 
     async def all_sensors_off(self):
         sensors_on = []
