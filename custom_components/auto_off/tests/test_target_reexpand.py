@@ -116,6 +116,50 @@ class TestRootSubscription:
         root_subs = [t for t in tracked if "light.example_root" in t[0]]
         assert len(root_subs) == 1
 
+    async def test_invalid_root_id_does_not_subscribe_or_crash(self, caplog):
+        """Validates: a config with an invalid root entity_id does not
+        crash setup, does not install a subscription, and emits a WARNING
+        log so the user sees the typo."""
+        import logging
+
+        hass = _hass_for_root("light.example_root", ["light.leaf_a"])
+        config = GroupConfig(
+            targets=["not_an_entity_id"],
+            sensors=["binary_sensor.motion"],
+            sensor_templates=[],
+            delay=0,
+        )
+
+        tracked = []
+
+        def fake_track(hass_arg, entity_ids, callback):
+            tracked.append(list(entity_ids))
+            return MagicMock(name="unsub")
+
+        caplog.set_level(logging.WARNING, logger="custom_components.auto_off.auto_off")
+
+        with patch(
+            "custom_components.auto_off.auto_off.async_track_state_change_event",
+            side_effect=fake_track,
+        ):
+            group = SensorGroup(hass, "g", config, manager=None)
+            await group._async_init_targets()
+
+        # No subscription installed for the invalid id.
+        assert all("not_an_entity_id" not in ids for ids in tracked), (
+            f"unexpected subscription installed for invalid root: {tracked!r}"
+        )
+
+        # No service call dispatched as a side effect of setup.
+        hass.services.async_call.assert_not_awaited()
+
+        # WARNING emitted naming the invalid target.
+        assert any(
+            "not_an_entity_id" in r.message
+            for r in caplog.records
+            if r.levelno == logging.WARNING
+        ), f"expected WARNING about invalid root, got {[r.message for r in caplog.records]!r}"
+
     async def test_self_state_change_without_membership_diff_is_ignored(self):
         """Validates: when the root flips on -> off but
         attributes.entity_id is unchanged, no service call is dispatched
@@ -187,7 +231,7 @@ class TestReexpandDrivesDeadline:
             targets=["light.example_root"],
             sensors=["binary_sensor.motion"],
             sensor_templates=[],
-            delay=0,
+            delay=10,  # non-zero so deadline persists long enough to observe
         )
 
         deadline_events: list[tuple[str, str | None]] = []
@@ -259,14 +303,15 @@ class TestReexpandDrivesDeadline:
         for _ in range(5):
             await asyncio.sleep(0)
 
-        # delay=0 means deadline fires immediately and clears, but a
-        # transition (None -> set, then set -> None) must be observed.
-        # The strongest claim we can make without timing assumptions:
-        # the callback was invoked at least once with a non-None
-        # deadline_iso OR turn_off was dispatched.
+        # delay=10 ensures the deadline persists long enough to observe
+        # the non-null deadline notification; without this the deadline
+        # would fire immediately (delay=0) and the resulting trace would
+        # be ambiguous with startup-induced service calls.
         non_null = [e for e in deadline_events if e[1] is not None]
-        turn_off_called = hass.services.async_call.await_count > 0
-        assert non_null or turn_off_called
+        assert non_null, (
+            f"expected a non-null deadline notification after re-expand, "
+            f"got {deadline_events!r}"
+        )
 
     async def test_removing_only_on_leaf_cancels_deadline(self):
         hass = _hass_for_root(
@@ -371,31 +416,71 @@ class TestUnload:
             delay=0,
         )
 
+        deadline_events: list[tuple[str, str | None]] = []
+
+        def on_deadline_change(group_id, deadline_iso):
+            deadline_events.append((group_id, deadline_iso))
+
         unsubs_called: list[str] = []
+        callback_box: dict = {}
 
         def make_unsub(label):
             def _unsub():
                 unsubs_called.append(label)
-
             return _unsub
 
         sub_counter = {"n": 0}
 
         def fake_track(hass_arg, entity_ids, callback):
             sub_counter["n"] += 1
+            if "light.example_root" in entity_ids:
+                callback_box["cb"] = callback
             return make_unsub(f"sub-{sub_counter['n']}")
 
         with patch(
             "custom_components.auto_off.auto_off.async_track_state_change_event",
             side_effect=fake_track,
         ):
-            group = SensorGroup(hass, "g", config, manager=None)
+            group = SensorGroup(
+                hass, "g", config,
+                on_deadline_change=on_deadline_change,
+                manager=None,
+            )
             await group._async_init_targets()
 
+        deadline_events.clear()
         await group.async_unload()
 
-        # The first installation is the root subscription (per the
-        # ordering in _async_init_targets); its unsub must run on unload.
-        # Without the unload fix this assertion would fail because the
-        # root unsub callback would never be invoked.
-        assert "sub-1" in unsubs_called, f"root subscription unsub was not called; got {unsubs_called!r}"
+        # 1. Root subscription unsub was invoked.
+        assert "sub-1" in unsubs_called, (
+            f"root unsub was not called; got {unsubs_called!r}"
+        )
+
+        # 2. Post-unload, firing the captured callback must not produce
+        #    side effects: no new deadline notifications, no service calls.
+        cb = callback_box.get("cb")
+        assert cb is not None, "fake_track did not capture the root callback"
+
+        deadline_events.clear()
+        prior_service_calls = hass.services.async_call.await_count
+
+        old_state = MagicMock()
+        old_state.attributes = {"entity_id": ["light.leaf_a"]}
+        new_state = MagicMock()
+        new_state.attributes = {"entity_id": ["light.leaf_a", "light.leaf_b"]}
+        event = MagicMock()
+        event.data = {"old_state": old_state, "new_state": new_state}
+
+        import asyncio as _asyncio
+        result = cb(event)
+        if _asyncio.iscoroutine(result):
+            await result
+        for _ in range(5):
+            await _asyncio.sleep(0)
+
+        assert deadline_events == [], (
+            f"deadline notifications fired after unload: {deadline_events!r}"
+        )
+        assert hass.services.async_call.await_count == prior_service_calls, (
+            "service calls dispatched after unload"
+        )
