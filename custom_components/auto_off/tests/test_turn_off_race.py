@@ -63,7 +63,7 @@ class TestTurnOffRace:
         # Stub out the two helpers we care about so the test does not
         # exercise the full HA group machinery.
         group._cancel_ensure_task = MagicMock(wraps=group._cancel_ensure_task)
-        group._set_deadline_from_delay = AsyncMock()
+        group._maybe_delay_locked = AsyncMock()
         group._cancel_deadline = MagicMock(return_value=False)
 
         # Pretend a target is on (the second leaf hasn't acked off yet).
@@ -96,7 +96,7 @@ class TestTurnOffRace:
         await group.check_and_set_deadline()
 
         # The callback must have skipped: no new deadline got placed.
-        group._set_deadline_from_delay.assert_not_awaited()
+        group._maybe_delay_locked.assert_not_awaited()
 
         # Now let the ensure-loop finish.
         ensure_release.set()

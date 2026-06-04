@@ -1,29 +1,27 @@
-"""Smoke test that SensorGroup construction and state logging don't
-reference attributes removed from Target."""
+"""Smoke test that SensorGroup construction and check_and_set_deadline work
+without errors even when entities are absent from the state machine."""
 
 from __future__ import annotations
 
-import logging
 from unittest.mock import MagicMock
 
 from custom_components.auto_off.auto_off import GroupConfig, SensorGroup
 
 
-def make_hass():
-    hass = MagicMock()
-    hass.states.get = MagicMock(return_value=None)
-    hass.loop = MagicMock()
-    hass.loop.time = MagicMock(return_value=1000.0)
-    return hass
-
-
 async def test_sensor_group_state_logging_no_attribute_error(caplog):
-    sg_hass = make_hass()
+    sg_hass = MagicMock()
+    sg_hass.loop = MagicMock()
+    sg_hass.loop.time = MagicMock(return_value=1000.0)
+    sg_hass.bus = MagicMock()
+    sg_hass.states = MagicMock()
+    sg_hass.states.get = MagicMock(return_value=None)
     cfg = GroupConfig(
-        targets=["light.kitchen"],
-        sensors=["binary_sensor.motion"],
+        targets=["light.x"],
+        sensors=["binary_sensor.m"],
+        sensor_templates=[],
+        delay=2,
     )
-    sg = SensorGroup(sg_hass, "g1", cfg, on_deadline_change=None)
-    with caplog.at_level(logging.DEBUG, logger="custom_components.auto_off.auto_off"):
-        await sg._log_state_transitions({"target_on": False, "all_sensors_off": True, "human_deadline": "None"})
-    assert any("g1" in r.message for r in caplog.records), "Expected debug log containing group_id 'g1'"
+    sg = SensorGroup(sg_hass, "g1", cfg, on_deadline_change=None, poll_interval=15)
+    # check_and_set_deadline must run without raising on a group whose
+    # entities are absent from the state machine.
+    await sg.check_and_set_deadline()

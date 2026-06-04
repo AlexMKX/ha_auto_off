@@ -154,9 +154,8 @@ class TestReexpandDrivesDeadline:
         for s in group._sensors:
             s.is_on = AsyncMock(return_value=False)
         await group.check_and_set_deadline()
-        # _handle_first_run spawns create_task(_set_deadline_from_delay);
-        # flush several event-loop ticks so the task runs and calls
-        # _notify_deadline_change.
+        # Flush several event-loop ticks so any background tasks run and
+        # _notify_deadline_change fires.
         import asyncio
 
         for _ in range(5):

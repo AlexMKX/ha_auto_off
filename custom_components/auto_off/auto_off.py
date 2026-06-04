@@ -422,11 +422,11 @@ class SensorGroup:
         # One-shot guard so the delay<=poll_interval warning is not
         # repeated on every maybe_delay call (hot path).
         self._delay_warning_emitted = False
-        self._last_all_sensors_off: bool | None = None
+        # True until the first check_and_set_deadline runs; used to seed a
+        # baseline deadline at startup when a target is already on.
+        self._is_first_run = True
         # Critical section for race condition protection
         self._lock = asyncio.Lock()
-        # Tracking previous states for transition detection
-        self._last_any_target_on: bool | None = None
         # Post-deadline retry loop handle. See _ensure_off_loop and the
         # design spec (2026-05-16-ensure-off-loop-design.md).
         self._ensure_task: asyncio.Task | None = None
@@ -570,7 +570,8 @@ class SensorGroup:
                 )
 
         if not initial and (added or removed):
-            await self.check_and_set_deadline()
+            # Newly added leaves that are on count as activity (target turned on).
+            await self.check_and_set_deadline(target_just_turned_on=bool(added))
 
     async def all_sensors_off(self):
         sensors_on = []
@@ -598,20 +599,19 @@ class SensorGroup:
         except Exception as err:
             raise ValueError(f"Failed to render delay template: {self._config.delay}, result: {rendered}") from err
 
-    async def check_and_set_deadline(self):
-        """Main method for checking and setting deadline.
+    async def check_and_set_deadline(self, *, target_just_turned_on: bool = False):
+        """Evaluate the inactivity timer for this group.
 
-        While ``self._turn_off_lock`` is held, the group is in the
-        middle of its turn-off / ensure-off phase. External callbacks
-        that would otherwise re-enter this method (e.g. a late
-        ``Target ... state changed: True -> False`` event from MQTT)
-        must NOT run their deadline logic here: doing so would observe
-        ``target_on=True && sensors_off=True && self._timer is None``
-        and route through ``_check_expired_deadlines``, which cancels
-        the in-flight ensure-loop and pushes the remaining leaves out
-        by another full ``delay``. Skipping cleanly is the right
-        answer; the post-turn-off re-evaluation at the tail of
-        ``_turn_off_targets`` picks up any genuine state change.
+        Extend-only model:
+        - No target on -> cancel the deadline (nothing to manage).
+        - A target just turned on, OR presence is on, OR this is the first
+          run with a target on -> maybe_delay (push the deadline forward).
+        - Otherwise (target on, presence off, steady state) -> noop; let
+          the existing deadline ride to expiry.
+
+        The ``self._turn_off_lock`` guard suppresses re-entry during the
+        turn-off / ensure-off phase (a late target ``True -> False`` event
+        must not perturb the in-flight retry loop).
         """
         if self._turn_off_lock.locked():
             _LOGGER.debug(
@@ -621,36 +621,27 @@ class SensorGroup:
             return
 
         async with self._lock:
-            # Collect current state
-            current_state = await self._collect_current_state()
+            target_on = await self.any_target_on()
+            first = self._is_first_run
+            self._is_first_run = False
 
-            # Log state
-            self._log_current_state(current_state)
-
-            # First run initialization
-            if self._is_first_run():
-                self._handle_first_run(current_state)
+            if not target_on:
+                if self._cancel_deadline():
+                    _LOGGER.info(
+                        "[Group %s] Deadline cancelled: no target on",
+                        self.group_id,
+                    )
                 return
 
-            # Log state transitions
-            await self._log_state_transitions(current_state)
-
-            # Make deadline decisions
-            await self._handle_deadline_logic(current_state)
-
-            # Save current state as previous
-            self._update_last_states(current_state)
-
-    async def _collect_current_state(self) -> dict:
-        """Collects current state of sensors and targets"""
-        target_on = await self.any_target_on()
-        all_sensors_off = await self.all_sensors_off()
-
-        return {
-            "target_on": target_on,
-            "all_sensors_off": all_sensors_off,
-            "human_deadline": self._get_human_deadline(),
-        }
+            presence_on = not await self.all_sensors_off()
+            if target_just_turned_on or presence_on or first:
+                reason = (
+                    "target turned on"
+                    if target_just_turned_on
+                    else ("presence on" if presence_on else "startup baseline")
+                )
+                await self._maybe_delay_locked(reason)
+            # else: steady state, target on + presence off -> let it ride.
 
     def _get_human_deadline(self) -> str:
         """Converts deadline to human-readable format for logging"""
@@ -676,28 +667,6 @@ class SensorGroup:
             self._on_deadline_change(self.group_id, deadline_iso)
         except Exception as exc:
             _LOGGER.debug("Failed to notify deadline change for group %s: %s", self.group_id, exc)
-
-    def _log_current_state(self, state: dict):
-        """Logs current group state"""
-        _LOGGER.debug(
-            f"[Checking Group {self.group_id}] target_on={state['target_on']}, "
-            f"all_sensors_off={state['all_sensors_off']}, deadline={state['human_deadline']}"
-        )
-
-    def _is_first_run(self) -> bool:
-        """Checks if this is the first run"""
-        return self._last_all_sensors_off is None or self._last_any_target_on is None
-
-    def _handle_first_run(self, state: dict):
-        """Handles first system run"""
-        _LOGGER.info(f"[Group {self.group_id}] First run initialization")
-        self._last_all_sensors_off = state["all_sensors_off"]
-        self._last_any_target_on = state["target_on"]
-
-        # At startup just set deadline if needed
-        # Expired deadlines check will be in periodic worker
-        if state["target_on"] and state["all_sensors_off"] and self._timer_deadline is None:
-            self._track_background(self._set_deadline_from_delay("startup"))
 
     def _warn_if_delay_too_short(self, delay_seconds: int) -> None:
         """Warn once if the configured delay does not exceed poll_interval.
@@ -745,87 +714,6 @@ class SensorGroup:
             delay,
             human,
         )
-
-    async def _set_deadline_from_delay(self, reason: str):
-        """Sets deadline based on delay from config"""
-        delay = await self.get_delay()
-        now = self.hass.loop.time()
-        new_deadline = now + delay
-        self._start_deadline(force_deadline=new_deadline)
-
-        now_real = datetime.datetime.now().astimezone()
-        human_deadline = (now_real + datetime.timedelta(seconds=delay)).isoformat()
-        _LOGGER.info(
-            f"[Group {self.group_id}] Deadline set by {reason}: {delay}s | New deadline: {new_deadline} ({human_deadline})"
-        )
-
-    async def _log_state_transitions(self, state: dict):
-        """Log current sensor and target states."""
-        sensor_statuses = []
-        for s in self._sensors:
-            try:
-                status = await s.is_on()
-            except Exception as e:
-                status = f"error: {e}"
-            sensor_statuses.append(f"{getattr(s, 'raw', str(s))}: {status}")
-
-        target_statuses = []
-        for t in self._targets:
-            try:
-                status = await t.is_on()
-            except Exception as e:
-                status = f"error: {e}"
-            target_statuses.append(f"{t.entity_id}: {status}")
-
-        _LOGGER.debug(f"[Group {self.group_id}] Sensors: {sensor_statuses} | Targets: {target_statuses}")
-        _LOGGER.debug(
-            f"[Group {self.group_id}] State transition: "
-            f"last_all_sensors_off={self._last_all_sensors_off} -> all_sensors_off={state['all_sensors_off']}, "
-            f"last_any_target_on={self._last_any_target_on} -> any_target_on={state['target_on']}"
-        )
-
-    async def _handle_deadline_logic(self, state: dict):
-        """Main deadline decision logic"""
-        # If target is off -> always cancel deadline
-        if not state["target_on"]:
-            if self._cancel_deadline():
-                _LOGGER.info(f"[Group {self.group_id}] Deadline cancelled: target is off")
-            return
-
-        # Target is on - analyze state transitions
-        transitions = self._analyze_state_transitions(state)
-
-        if transitions["target_turned_on"] and state["all_sensors_off"]:
-            await self._set_deadline_from_delay("target turning ON")
-        elif transitions["sensors_turned_off"] and state["target_on"]:
-            await self._set_deadline_from_delay("sensors turning OFF")
-        elif transitions["sensors_turned_on"]:
-            if self._cancel_deadline():
-                _LOGGER.info(f"[Group {self.group_id}] Deadline cancelled: sensor turned on")
-        elif state["target_on"] and state["all_sensors_off"] and self._timer is None:
-            # Timer lost (e.g. after restart) - check expired deadlines
-            await self._check_expired_deadlines()
-
-    async def _check_expired_deadlines(self):
-        """
-        Called when target is on, sensors are off, but no timer exists.
-        After HA restart timers are lost — recalculate deadline from delay.
-        """
-        _LOGGER.debug("[Group %s] No active timer, setting new deadline", self.group_id)
-        await self._set_deadline_from_delay("no timer (recalculated)")
-
-    def _analyze_state_transitions(self, state: dict) -> dict:
-        """Analyzes state transitions"""
-        return {
-            "target_turned_on": self._last_any_target_on is False and state["target_on"],
-            "sensors_turned_off": self._last_all_sensors_off is False and state["all_sensors_off"],
-            "sensors_turned_on": self._last_all_sensors_off is True and not state["all_sensors_off"],
-        }
-
-    def _update_last_states(self, state: dict):
-        """Updates previous states"""
-        self._last_all_sensors_off = state["all_sensors_off"]
-        self._last_any_target_on = state["target_on"]
 
     def _start_deadline(self, force_deadline=None):
         # This method is only called from check_and_set_deadline, which is already under lock
@@ -1085,12 +973,20 @@ class SensorGroup:
         await self.check_and_set_deadline()
 
     async def _on_target_state_change(self, target: Target, old_state: bool | None, new_state: bool | None):
-        """Handler for target state changes, passed to Target"""
-        # This method is called from Target._handle_my_changes
-        # It is only called when a REAL state change occurs for target
-        # (old_state != new_state), ignoring intermediate unknown/unavailable states
-        _LOGGER.debug(f"Target {getattr(target, 'entity_id', 'unknown')} state change: {old_state} -> {new_state}")
-        await self.check_and_set_deadline()
+        """Handler for target state changes, passed to Target.
+
+        A target turning on is activity: it extends the deadline even when
+        no presence is detected (so a manually-switched light gets a full
+        delay). A target turning off re-evaluates (and cancels if nothing
+        is left on).
+        """
+        _LOGGER.debug(
+            "Target %s state change: %s -> %s",
+            getattr(target, "entity_id", "unknown"),
+            old_state,
+            new_state,
+        )
+        await self.check_and_set_deadline(target_just_turned_on=bool(new_state))
 
     async def _on_sensor_state_change(self, sensor: Sensor, old_state: bool | None, new_state: bool | None):
         """Handler for sensor state changes, passed to Sensor"""

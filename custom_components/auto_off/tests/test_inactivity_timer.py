@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from custom_components.auto_off.auto_off import GroupConfig, SensorGroup
+from homeassistant.core import State
 
 
 def _hass(clock_start: float = 1000.0):
@@ -99,3 +100,117 @@ class TestDelayWarning:
         assert not any(
             "poll_interval" in r.message for r in caplog.records
         )
+
+
+def _hass_with_states(target_on: bool, presence_on: bool, clock=1000.0):
+    """hass whose state lookups reflect a single target and single sensor.
+
+    Returns real ``homeassistant.core.State`` objects so that
+    ``isinstance(state, State)`` checks in Sensor._check_entity_state pass.
+    """
+    hass = _hass(clock_start=clock)
+
+    def _get(eid):
+        if eid == "light.kitchen":
+            return State(eid, "on" if target_on else "off")
+        if eid == "binary_sensor.motion":
+            return State(eid, "on" if presence_on else "off")
+        return None
+
+    hass.states.get = MagicMock(side_effect=_get)
+    return hass
+
+
+class TestInactivityModel:
+    """check_and_set_deadline / _on_target_state_change behavior.
+
+    Every test awaits ``_async_init_targets`` first: the SensorGroup
+    constructor schedules target init as a background task that the tests
+    do not otherwise wait for, so ``self._targets`` would be empty and
+    ``any_target_on()`` would wrongly return False.
+    """
+
+    async def test_manual_on_no_presence_sets_full_delay_not_immediate(self):
+        """Target turns on while unoccupied -> deadline now+delay, NOT fired."""
+        hass = _hass_with_states(target_on=True, presence_on=False, clock=1000.0)
+        events: list[tuple[str, str | None]] = []
+        group = _group(
+            hass, delay=2, poll_interval=15,
+            on_deadline_change=lambda gid, iso: events.append((gid, iso)),
+        )
+        await group._async_init_targets()
+        # Simulate the target's own off->on callback.
+        await group._on_target_state_change(MagicMock(), False, True)
+        # A non-null deadline was published and no immediate turn-off.
+        assert group._timer_deadline == pytest.approx(1120.0)
+        assert hass.services.async_call.await_count == 0
+
+    async def test_no_target_on_cancels_deadline(self):
+        hass = _hass_with_states(target_on=False, presence_on=False, clock=1000.0)
+        events: list[tuple[str, str | None]] = []
+        group = _group(
+            hass, delay=2,
+            on_deadline_change=lambda gid, iso: events.append((gid, iso)),
+        )
+        await group._async_init_targets()
+        # Seed a deadline, then re-check with no target on.
+        group._timer_deadline = 1120.0
+        group._is_first_run = False
+        await group.check_and_set_deadline()
+        assert group._timer_deadline is None
+
+    async def test_presence_on_extends_each_call(self):
+        hass = _hass_with_states(target_on=True, presence_on=True, clock=1000.0)
+        group = _group(hass, delay=10, poll_interval=15)  # 600s
+        await group._async_init_targets()
+        await group.check_and_set_deadline()  # first run seeds baseline
+        first = group._timer_deadline
+        assert first == pytest.approx(1600.0)
+        # Advance clock by a patrol interval; presence still on -> extend.
+        hass.loop.time.return_value = 1015.0
+        await group.check_and_set_deadline()
+        assert group._timer_deadline == pytest.approx(1615.0)
+
+    async def test_presence_off_does_not_extend_steady_state(self):
+        hass = _hass_with_states(target_on=True, presence_on=False, clock=1000.0)
+        group = _group(hass, delay=10, poll_interval=15)
+        await group._async_init_targets()
+        # First run with target on seeds a baseline deadline.
+        await group.check_and_set_deadline()
+        seeded = group._timer_deadline
+        assert seeded == pytest.approx(1600.0)
+        # Later patrol tick, presence still off, no fresh turn-on -> noop.
+        hass.loop.time.return_value = 1300.0
+        await group.check_and_set_deadline()
+        assert group._timer_deadline == pytest.approx(1600.0)  # unchanged
+
+    async def test_second_target_on_extends(self):
+        # Two targets; first on, second turns on later (presence off).
+        hass = _hass(clock_start=1000.0)
+        states = {"light.a": "on", "light.b": "off", "binary_sensor.motion": "off"}
+
+        def _get(eid):
+            if eid in states:
+                st = MagicMock()
+                st.state = states[eid]
+                st.attributes = {}
+                return st
+            return None
+
+        hass.states.get = MagicMock(side_effect=_get)
+        config = GroupConfig(
+            targets=["light.a", "light.b"],
+            sensors=["binary_sensor.motion"],
+            sensor_templates=[],
+            delay=10,
+        )
+        group = SensorGroup(hass, "g", config, manager=None, poll_interval=15)
+        await group._async_init_targets()
+        # First evaluation seeds baseline (a is on).
+        await group.check_and_set_deadline()
+        assert group._timer_deadline == pytest.approx(1600.0)
+        # Time passes; b turns on -> its callback extends.
+        hass.loop.time.return_value = 1200.0
+        states["light.b"] = "on"
+        await group._on_target_state_change(MagicMock(), False, True)
+        assert group._timer_deadline == pytest.approx(1800.0)
