@@ -1089,7 +1089,7 @@ git commit -m "docs: describe root target group expansion and runtime re-eval"
 
 ```
 # from project root
-ssh root@hassio.h.xxl.cx 'ls /config/custom_components/auto_off'
+ssh root@example.com 'ls /config/custom_components/auto_off'
 # bump version in manifest.json (current: 2604232332) -> new YYMMDDhhmm timestamp
 # sync via existing deploy mechanism (rsync/git pull in /config or HACS reinstall)
 # restart Home Assistant via supervisor
@@ -1102,16 +1102,16 @@ ssh root@hassio.h.xxl.cx 'ls /config/custom_components/auto_off'
 After HA restart on the production host:
 
 ```
-ssh root@hassio.h.xxl.cx "grep -E 'Group out_light_all|Target leaves changed.*out_light_all' /config/home-assistant.log | head -20"
+ssh root@example.com "grep -E 'Group example_group|Target leaves changed.*example_group' /config/home-assistant.log | head -20"
 ```
 
-Expected: a log line `[Group out_light_all] Target leaves changed: added=[...10 leaves...] removed=[]`. Then toggle `light.out_porch_light_door` and confirm:
+Expected: a log line `[Group example_group] Target leaves changed: added=[...10 leaves...] removed=[]`. Then toggle `light.example_leaf` and confirm:
 
 ```
-ssh root@hassio.h.xxl.cx "tail -F /config/home-assistant.log | grep -E 'out_light_all|out_porch_light_door'"
+ssh root@example.com "tail -F /config/home-assistant.log | grep -E 'example_group|example_leaf'"
 ```
 
-Expected: `Target 'light.out_porch_light_door' state changed: False -> True`, followed by deadline-start log lines.
+Expected: `Target 'light.example_leaf' state changed: False -> True`, followed by deadline-start log lines.
 
 ---
 
