@@ -168,29 +168,32 @@ target. The attribute is cleared when the deadline is cancelled.
 
 ## Key principles
 
-- **Sensor group = OR**: the group is active while any sensor is on/true.
-  It is inactive only when all sensors are off/false.
-- **Deadline exists only in one state**: deadline is allowed only when any
-  target is on and all sensors are off.
-- **Activity cancels the deadline**: any sensor turning on cancels the
-  deadline.
-- **Delay extends, never shortens**: when a target turns on while a
-  deadline exists, the deadline is extended only if the new deadline
-  would be later.
+- **Inactivity timer**: the deadline is a single point in time that
+  activity pushes forward. When activity stops, the deadline stops
+  moving and eventually fires, turning off every target.
+- **Activity = a target turning on, or presence detected**: a target
+  switching on extends the deadline (even with no presence, giving a
+  manually-switched light a full delay); while presence is detected, the
+  periodic patrol re-extends the deadline every `poll_interval`.
+- **Extend-only**: a new deadline replaces the current one only if it is
+  later. Activity never shortens an existing deadline.
+- **Cancel only when nothing is on**: the deadline is cancelled when no
+  target is on. Presence does not cancel the deadline; it extends it.
+- **delay must exceed poll_interval**: the patrol re-extends every
+  `poll_interval` seconds (default 15; commonly 60). The group `delay`
+  (in minutes) must be greater than `poll_interval`, otherwise the timer
+  can fire between patrol ticks while occupied and flap the lights off.
+  A WARNING is logged when a group's delay does not exceed
+  `poll_interval`. Set `delay` to at least a couple of minutes.
 - **Ensure-off retry**: at deadline expiry auto_off does an initial
   `turn_off` dispatch and then runs a bounded retry loop for
   `ENSURE_WINDOW_SEC` seconds (60s), re-issuing `turn_off` every
-  `ENSURE_INTERVAL_SEC` seconds (10s) on any target that is still
-  on while sensors stay off. The loop aborts the moment any sensor
-  reports on again. This makes the integration resilient to transient
-  MQTT/Zigbee delivery failures and to brief races with other
-  automations (e.g. Magic Areas Light Control), without overriding
-  legitimate user / occupancy actions. The values are module-level
-  constants; promote them to per-group settings only when a real use
-  case requires it.
-- **Recovery from attributes**: if the timer is lost (e.g. HA restart),
-  the integration periodically checks `auto_off_deadline` and retries
-  turning off overdue entities.
+  `ENSURE_INTERVAL_SEC` seconds (10s) on any target still on while
+  sensors stay off. The loop aborts the moment any sensor reports on
+  again.
+- **Recovery after restart**: on startup a target that is already on is
+  granted a fresh full delay (the deadline is re-seeded from the restart
+  moment). While presence is on, patrol begins extending immediately.
 
 ## Idempotency and scripting
 
